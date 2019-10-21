@@ -32,61 +32,61 @@ class BotController:
             '/start': {
                 'cmd': self.cmd_start,
                 'places': ['bot'],
-                'rights_level': '0',
+                'rights_level': 0,
                 'desc': None
             },
             '/help': {
                 'cmd': self.cmd_help,
                 'places': ['bot', 'dialog'],
-                'rights_level': '0',
+                'rights_level': 0,
                 'desc': 'краткая справка, это ее ты сейчас видишь'
             },
             '/exit': {
                 'cmd': self.cmd_exit,
                 'places': ['dialog'],
-                'rights_level': '0',
+                'rights_level': 0,
                 'desc': 'конец диалога'
             },
             '/devices': {
                 'cmd': self.cmd_devices,
                 'places': ['bot'],
-                'rights_level': '3',
+                'rights_level': 3,
                 'desc': 'состояние подключенных устройств и управление ими'
             },
             '/auto': {
                 'cmd': self.cmd_auto_answer,
                 'places': ['bot'],
-                'rights_level': '3',
+                'rights_level': 3,
                 'desc': 'автоответчик'
             },
             '/user_info': {
                 'cmd': self.cmd_user_info,
                 'places': ['bot', 'dialog'],
-                'rights_level': '2',
+                'rights_level': 2,
                 'desc': 'информация о пользователе. Параметр - логин/ID пользователя. Без параметра показывает информацию о тебе'
             },
             '/activity_today': {
                 'cmd': self.cmd_activity_today,
                 'places': ['bot', 'dialog'],
-                'rights_level': '2',
+                'rights_level': 2,
                 'desc': 'сессии за сегодня. Параметр - логин/ID пользователя. Без параметра показывает твои сессии'
             },
             '/plot_today': {
                 'cmd': self.cmd_plot_today,
                 'places': ['bot', 'dialog'],
-                'rights_level': '3',
+                'rights_level': 3,
                 'desc': 'график активности пользователя за сегодня. Параметр - логин/ID пользователя. Без параметра показывает твой график'
             },
             '/plot_all': {
                 'cmd': self.cmd_plot_all,
                 'places': ['bot', 'dialog'],
-                'rights_level': '3',
+                'rights_level': 3,
                 'desc': 'график активности пользователя за всё время. Параметр - логин/ID пользователя. Без параметра показывает твой график'
             },
             '/plot_hours': {
                 'cmd': self.cmd_plot_hours,
                 'places': ['bot', 'dialog'],
-                'rights_level': '3',
+                'rights_level': 3,
                 'desc': 'статистика активности пользователя по часам за всё время. Параметр - логин/ID пользователя. Без параметра показывает твой график'
             }
         }
@@ -98,6 +98,9 @@ class BotController:
         self.active_entity_is_bot = False
         self.active_entity_client = None
         self.active_entity_name = None
+
+    def init_chat_for_user(self, user_id, show_bot_str=True):
+        pass
 
     def is_active(self):
         return self.bot_active
@@ -154,6 +157,17 @@ class BotController:
         return False
 
     def text_to_bot_text(self, text):
+        place_code = self.get_curr_place_code()
+        if place_code != 'bot':
+            text = re.sub(r"\[bot_only\].*\[/bot_only\]", '', text, flags=re.MULTILINE | re.IGNORECASE)
+            text = text.replace('[dialog_only]', '')
+            text = text.replace('[/dialog_only]', '')
+            text = text.strip()
+        if place_code != 'dialog':
+            text = re.sub(r"\[dialog_only\].*\[/dialog_only\]", '', text, flags=re.MULTILINE | re.IGNORECASE)
+            text = text.replace('[bot_only]', '')
+            text = text.replace('[/bot_only]', '')
+            text = text.strip()
         if not self.active_entity_is_bot:
             return self.bot_answer_format_text.replace('[result]', text)
         else:
@@ -165,26 +179,30 @@ class BotController:
         else:
             return 'bot'
 
+    def get_entity_rights_level(self, entity, max_level_user_ids=None):
+        if not max_level_user_ids:
+            max_level_user_ids = [self.tg_client.me_user_id]
+        if type(entity) == User:
+            if entity.id in max_level_user_ids:
+                return 4
+            elif entity.bot:
+                return -1
+            elif entity.id == self.tg_client.selected_user_activity:
+                return 3
+            elif entity.mutual_contact:
+                return 2
+            elif entity.contact:
+                return 1
+        return 0
+
     async def get_user_rights_level(self, user_id):
         str_user_id = str(user_id)
         if str_user_id not in self.users_rights:
             try:
                 entity = await self.tg_client.get_entity(PeerUser(int(user_id)))
-                if type(entity) == User:
-                    if entity.id == self.tg_client.me_user_id:
-                        self.users_rights[str_user_id] = '4'
-                    elif entity.id == self.tg_client.selected_user_activity:
-                        self.users_rights[str_user_id] = '3'
-                    elif entity.mutual_contact:
-                        self.users_rights[str_user_id] = '2'
-                    elif entity.contact:
-                        self.users_rights[str_user_id] = '1'
-                    else:
-                        self.users_rights[str_user_id] = '0'
-                else:
-                    self.users_rights[str_user_id] = '0'
+                self.users_rights[str_user_id] = self.get_entity_rights_level(entity)
             except:
-                self.users_rights[str_user_id] = '0'
+                self.users_rights[str_user_id] = 0
         return self.users_rights[str_user_id]
 
     async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type, bot_chat=None):
@@ -357,4 +375,4 @@ class BotController:
         await self.active_entity_client.send_message(self.active_entity, 'Не хватает прав на выполнение команды!')
 
     async def cmd_auto_answer(self, from_id, params):
-        await self.active_entity_client.send_message(self.active_entity, 'Не хватает прав на выполнение команды!')
+        await self.tg_client.aa_controller.begin_setup(from_id, self.active_entity_client, self.active_entity)

@@ -20,6 +20,9 @@ class InteractiveTelegramBot(TelegramClient):
         if data.message.from_id == self.me_entity.id:
             return
         bot_chat = await event.get_input_chat()
+        if self.tg_client.aa_controller.is_setup_mode:
+            if await self.tg_client.aa_controller.on_bot_message(data.message.message, data.message.from_id, bot_chat):
+                return
         await self.tg_client.bot_controller.bot_command(data.message.message, data.message.from_id, self.me_entity.id, 'Bot', bot_chat)
 
     def do_start(self):

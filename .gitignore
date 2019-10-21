@@ -76,7 +76,9 @@ gen
 *.sqlite3
 *.sqlite3-journal
 *.session
+*.session-journal
 *.db
+*.db-journal
 
 # other
 /files/*.png

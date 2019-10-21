@@ -21,6 +21,7 @@ from telethon.tl.types import UpdateUserStatus, UserStatusOnline, UserStatusOffl
     UpdateNotifySettings, UpdateChannelPinnedMessage
 from telethon.utils import get_display_name, is_list_like
 
+from auto_answers import AutoAnswers
 from bot_controller import BotController
 from periodic import Periodic
 from status_controller import StatusController
@@ -86,9 +87,12 @@ class InteractiveTelegramClient(TelegramClient):
         self.db_conn = self.get_db('client_data.db')
         self.status_controller = StatusController(self)
         self.bot_controller = BotController(self)
+        self.aa_controller = AutoAnswers(self.bot_controller)
         self.last_update = None
         self.dialogs_init_complete = False
         self.me_user_id = None
+        self.me_user_name = None
+        self.me_last_activity = datetime.now()
 
         print('Initializing Telegram client...')
 
@@ -672,6 +676,11 @@ class InteractiveTelegramClient(TelegramClient):
 
                     if need_show_message and not is_bot_message:
                         self.sprint('<<< ' + message.replace('\n', ' \\n '))
+                        if (e_type == 'User') and (from_id != self.me_user_id):
+                            await self.aa_controller.on_user_message(from_id, message)
+
+                    if (e_type == 'User') and (from_id == self.me_user_id):
+                        await self.aa_controller.on_me_write_message_to_user(entity_id)
 
             elif type(update) in [UpdateDeleteChannelMessages, UpdateDeleteMessages]:
                 data = update.to_dict()
@@ -808,6 +817,8 @@ class InteractiveTelegramClient(TelegramClient):
             return
         try:
             data = update.original_update.to_dict()
+            if (data['_'] == 'UpdateUserStatus') and (data['user_id'] == self.me_user_id) and (data['status']['_'] == 'UserStatusOnline'):
+                self.me_last_activity = datetime.now()
             if not self.is_set_config_event(data['_']):
                 return
             if data['_'] == 'UpdateUserStatus':
@@ -848,17 +859,23 @@ class InteractiveTelegramClient(TelegramClient):
         await self.get_entity("me")
 
     async def periodic_check(self):
-        if self.dialogs_init_complete and self.last_update and ((datetime.now() - self.last_update).total_seconds() > 240):
-            print('Reconnection...')
-            self.is_connected()
-            await self.is_user_authorized()
-            await self.get_dialogs(limit=1)
-            await self.get_entity("me")
-            self.last_update = datetime.now()
+        if self.dialogs_init_complete and self.last_update:
+            if (datetime.now() - self.last_update).total_seconds() > 240:
+                print('Reconnection...')
+                self.is_connected()
+                await self.is_user_authorized()
+                await self.get_dialogs(limit=1)
+                me_entity = await self.get_entity("me")
+                me_entity_data = me_entity.to_dict()
+                if me_entity_data['status'] and (me_entity_data['status']['_'] == 'UserStatusOnline'):
+                    self.me_last_activity = datetime.now()
+                self.last_update = datetime.now()
+            await self.aa_controller.on_timer()
 
     async def run(self):
         me_entity = await self.get_entity("me")
         self.me_user_id = me_entity.id
+        self.me_user_name = get_display_name(me_entity)
 
         # self.add_event_handler(self.message_handler, event=events.NewMessage)
         self.add_event_handler(self.update_handler, event=events.UserUpdate)
