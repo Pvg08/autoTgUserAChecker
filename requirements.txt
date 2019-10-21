@@ -1,0 +1,11 @@
+configparser==4.0.2
+Telethon==1.10.4
+PySocks==1.7.1
+socks
+plotly
+apiai
+orca
+psutil
+requests
+ipython
+nbformat
