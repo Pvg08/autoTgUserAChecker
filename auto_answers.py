@@ -1,6 +1,10 @@
+import traceback
 from datetime import datetime
 
+from telethon.tl import functions
+from telethon.tl.functions.messages import GetDialogsRequest
 from telethon.tl.types import User, PeerUser
+from telethon.tl.types.messages import DialogsSlice
 
 from bot_controller import BotController
 from status_controller import StatusController
@@ -106,13 +110,26 @@ class AutoAnswers:
             self.reset_aa()
             self.aa_options['is_set'] = True
         elif self.setup_step == 100:
-            msg = 'Автоответчик для ' + self.aa_user_name + ' уже настроен.\n\nПараметры:\n'
+            msg = 'Автоответчик для ' + self.aa_user_name + ' уже настроен и запущен.\n\nПараметры:\n'
             msg = msg + '```'
             for k, v in self.aa_options.items():
                 if k != 'is_set':
                     msg = msg + k + ' = ' + str(v) + '\n'
             msg = msg + '```\n'
-            msg = msg + 'отключить его?'
+            msg = msg + 'Ожидающие ответа пользователи: '
+            if len(self.aa_for_users) > 0:
+                for user_id, user_date in self.aa_for_users.items():
+                    msg = msg + '\n'
+                    msg = msg + (await self.tg_bot_controller.tg_client.get_entity_name(int(user_id), 'User'))
+                    msg = msg + ' --- '
+                    if user_date:
+                        msg = msg + StatusController.datetime_to_str(user_date)
+                    else:
+                        msg = msg + 'Завершено'
+            else:
+                msg = msg + 'Отсутствуют'
+            msg = msg + '\n\n'
+            msg = msg + 'отключить автоответчик?'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
 
     async def on_bot_message(self, message, from_id, dialog_entity):
@@ -198,16 +215,18 @@ class AutoAnswers:
         message_text = self.aa_options['message']
         message = message_text.replace('[username]', self.aa_user_name)
         if self.aa_options['show_bot']:
-            message = self.tg_bot_controller.text_to_bot_text(message)
-        # await self.tg_bot_controller.tg_client.send_message(PeerUser(to_id), message)
-        print('Sending AA message')
-        print(datetime.now())
-        print(PeerUser(to_id))
-        print(message)
+            message = self.tg_bot_controller.text_to_bot_text(message, "dialog")
+        else:
+            message = self.tg_bot_controller.text_to_bot_text(message, "bot")
+        to_username = await self.tg_bot_controller.tg_client.get_entity_name(to_id, 'User')
+        print(StatusController.datetime_to_str(datetime.now()) + ' Sending AA message to user "'+to_username+'"')
+        print('<<< ' + message)
+        await self.tg_bot_controller.tg_client.send_message(PeerUser(to_id), message)
 
     async def on_user_message_to_me(self, from_id, message_text):
+        if not self.aa_options['is_set']:
+            return
         if from_id in self.aa_not_for_users:
-            print('AA not user! ' + str(from_id))
             return
         str_from_id = str(from_id)
         if (str_from_id in self.aa_for_users) and self.aa_for_users[str_from_id]:
@@ -218,46 +237,88 @@ class AutoAnswers:
             return
         if (not entity) or (type(entity) != User):
             return
-        user_level = self.tg_bot_controller.get_entity_rights_level(entity)
+        user_level = self.tg_bot_controller.get_entity_rights_level(entity, self.aa_options['from_user_ids'])
         if user_level < self.aa_options['from_mode']:
             if from_id not in self.aa_not_for_users:
                 self.aa_not_for_users.append(from_id)
-                print('AA not users:')
-                print(self.aa_not_for_users)
             return
-        self.aa_for_users[str_from_id] = datetime.now()
-        print('AA users')
-        print(self.aa_for_users)
+        self.aa_for_users[str_from_id] = StatusController.now_local_datetime()
+        check_user_name = await self.tg_bot_controller.tg_client.get_entity_name(from_id, 'User')
+        print(StatusController.datetime_to_str(datetime.now()) + ' Adding AA schedule for user "' + check_user_name + '"')
         if self.aa_options['answer_after_minutes'] == 0:
-            await self.on_timer([from_id])
+            await self.on_timer([str(from_id)])
 
     async def on_timer(self, check_ids=None):
-        if not self.aa_options['is_set']:
-            return
-        if ((datetime.now() - self.tg_bot_controller.tg_client.me_last_activity).total_seconds() / 60) > self.aa_options['activate_after_minutes']:
-            return
-        if not check_ids:
-            check_ids = self.aa_for_users.keys()
-        for check_id in check_ids:
-            str_check_id = str(check_id)
-            if (str_check_id in self.aa_for_users) and self.aa_for_users[str_check_id]:
-                if ((datetime.now() - self.aa_for_users[str_check_id]).total_seconds() / 60) >= self.aa_options['answer_after_minutes']:
+        try:
+            if not self.aa_options['is_set']:
+                return
+            if ((datetime.now() - self.tg_bot_controller.tg_client.me_last_activity).total_seconds() / 60) < self.aa_options['activate_after_minutes']:
+                return
+            if not check_ids:
+                check_ids = self.aa_for_users.keys()
+            dialogs = None
+            for str_check_id in check_ids:
+                check_id = int(str_check_id)
+                if (str_check_id in self.aa_for_users) and self.aa_for_users[str_check_id]:
+                    if ((StatusController.now_local_datetime() - self.aa_for_users[str_check_id]).total_seconds() / 60) >= self.aa_options['answer_after_minutes']:
 
-                    t_messages = await self.tg_bot_controller.tg_client.get_messages(PeerUser(int(check_id)), limit=10)
-                    for t_message in t_messages:
-                        message_date = StatusController.tg_datetime_to_local_datetime(t_message.date)
-                        if (t_message.from_id == self.tg_bot_controller.tg_client.me_user_id) and (message_date > self.aa_for_users[str_check_id]):
+                        if not dialogs:
+                            input_peer = await self.tg_bot_controller.tg_client.get_input_entity(PeerUser(check_id))
+                            dialogs = await self.tg_bot_controller.tg_client(GetDialogsRequest(
+                                limit=0,
+                                offset_date=None,
+                                offset_id=0,
+                                offset_peer=input_peer,
+                                hash=0,
+                                folder_id=0
+                            ))
+                            if type(dialogs) == DialogsSlice:
+                                dialogs = dialogs.dialogs
+
+                        c_dialog = None
+                        if dialogs:
+                            for dialog in dialogs:
+                                if (type(dialog.peer) == PeerUser) and (dialog.peer.user_id == check_id):
+                                    c_dialog = dialog
+                                    break
+
+                        do_remove_aa_user_record = False
+                        if (not c_dialog) or (c_dialog.unread_count > 0):
+                            unread_cnt_not_me = 0
+                            t_messages = await self.tg_bot_controller.tg_client.get_messages(PeerUser(check_id), limit=10)
+                            for t_message in t_messages:
+                                message_date = StatusController.tg_datetime_to_local_datetime(t_message.date)
+                                user_date = self.aa_for_users[str_check_id]
+                                if t_message.from_id == self.tg_bot_controller.tg_client.me_user_id:
+                                    if (message_date > user_date) and ((message_date - user_date).total_seconds() > 1):
+                                        do_remove_aa_user_record = True
+                                        break
+                                elif c_dialog and (t_message.id > c_dialog.read_inbox_max_id):
+                                    unread_cnt_not_me = unread_cnt_not_me + 1
+                            if c_dialog and (unread_cnt_not_me == 0):
+                                do_remove_aa_user_record = True
+                        elif c_dialog and (c_dialog.unread_count == 0):
+                            do_remove_aa_user_record = True
+
+                        if do_remove_aa_user_record:
                             self.aa_for_users[str_check_id] = None
-                            print('Removing AA schedule 2 ' + str_check_id)
+                            check_user_name = await self.tg_bot_controller.tg_client.get_entity_name(check_id, 'User')
+                            print(StatusController.datetime_to_str(datetime.now()) + ' Removing AA schedule for user "'+check_user_name+'"')
                             continue
 
-                    await self.send_message(int(check_id))
-                    if self.aa_options['allow_bot_chat']:
-                        self.tg_bot_controller.init_chat_for_user(int(check_id), self.aa_options['show_bot'])
-                    self.aa_for_users[str_check_id] = None
+                        self.aa_for_users[str_check_id] = None
+                        self.aa_not_for_users.append(check_id)
+                        await self.send_message(check_id)
+                        if self.aa_options['allow_bot_chat']:
+                            self.tg_bot_controller.init_chat_for_user(check_id, self.aa_options['show_bot'])
+        except:
+            traceback.print_exc()
 
     async def on_me_write_message_to_user(self, to_user_id):
+        if not self.aa_options['is_set']:
+            return
         str_check_id = str(to_user_id)
         if (str_check_id in self.aa_for_users) and self.aa_for_users[str_check_id]:
             self.aa_for_users[str_check_id] = None
-            print('Removing AA schedule 1 ' + str_check_id)
+            check_user_name = await self.tg_bot_controller.tg_client.get_entity_name(to_user_id, 'User')
+            print(StatusController.datetime_to_str(datetime.now()) + ' Removing AA schedule for user "' + check_user_name + '"')

@@ -13,12 +13,14 @@ from playsound import playsound
 from telethon.errors import SessionPasswordNeededError, ChatIdInvalidError
 from telethon.network import ConnectionTcpMTProxyRandomizedIntermediate, ConnectionTcpAbridged
 from telethon import TelegramClient, events
+from telethon.tl import functions
+from telethon.tl.functions.messages import GetHistoryRequest, GetDialogsRequest
 from telethon.tl.types import UpdateUserStatus, UserStatusOnline, UserStatusOffline, UpdateUserTyping, PeerUser, \
     UpdateNewChannelMessage, UpdateShortMessage, User, UpdateEditChannelMessage, \
     UpdateEditMessage, UpdateDeleteChannelMessages, UpdateMessagePoll, PeerChannel, PeerChat, UpdateDeleteMessages, \
     UpdateNewMessage, UpdateReadHistoryOutbox, UpdateReadHistoryInbox, UpdateDraftMessage, UpdateChannelMessageViews, \
     UpdateReadChannelInbox, UpdateWebPage, UpdateShortChatMessage, UpdateChatUserTyping, Channel, Chat, \
-    UpdateNotifySettings, UpdateChannelPinnedMessage
+    UpdateNotifySettings, UpdateChannelPinnedMessage, InputPeerUser
 from telethon.utils import get_display_name, is_list_like
 
 from auto_answers import AutoAnswers
@@ -669,7 +671,15 @@ class InteractiveTelegramClient(TelegramClient):
                         playsound(self.config['notify_sounds']['notify_when_editing_sound'], False)
 
                     is_bot_message = False
-                    if is_message_new and (self.selected_user_activity == entity_id):
+                    if is_message_new and (e_type in ['User', 'Bot']) and (
+                            ((to_id == self.me_user_id) and (from_id == self.selected_user_activity)) or
+                            ((from_id == self.me_user_id) and (to_id == self.selected_user_activity)) or
+                            self.bot_controller.is_active_for_entity(entity_id)
+                    ) and (
+                            (not self.tg_bot) or
+                            (not self.tg_bot.bot_entity) or
+                            (self.tg_bot.bot_entity.id != entity_id)
+                    ):
                         is_bot_message = await self.bot_controller.bot_check_message(message, from_id, entity_id, e_type)
 
                     if need_show_message and is_message_edit and (int(self.config['messages']['display_edit_messages']) == 1):
@@ -861,18 +871,21 @@ class InteractiveTelegramClient(TelegramClient):
         await self.get_entity("me")
 
     async def periodic_check(self):
-        if self.dialogs_init_complete and self.last_update:
-            if (datetime.now() - self.last_update).total_seconds() > 240:
-                print('Reconnection...')
-                self.is_connected()
-                await self.is_user_authorized()
-                await self.get_dialogs(limit=1)
-                me_entity = await self.get_entity("me")
-                me_entity_data = me_entity.to_dict()
-                if me_entity_data['status'] and (me_entity_data['status']['_'] == 'UserStatusOnline'):
-                    self.me_last_activity = datetime.now()
-                self.last_update = datetime.now()
-            await self.aa_controller.on_timer()
+        try:
+            if self.dialogs_init_complete and self.last_update:
+                if (datetime.now() - self.last_update).total_seconds() > 240:
+                    print('Reconnection...')
+                    self.is_connected()
+                    await self.is_user_authorized()
+                    await self.get_dialogs(limit=1)
+                    me_entity = await self.get_entity("me")
+                    me_entity_data = me_entity.to_dict()
+                    if me_entity_data['status'] and (me_entity_data['status']['_'] == 'UserStatusOnline'):
+                        self.me_last_activity = datetime.now()
+                    self.last_update = datetime.now()
+                await self.aa_controller.on_timer()
+        except:
+            traceback.print_exc()
 
     async def run(self):
         me_entity = await self.get_entity("me")
@@ -892,7 +905,11 @@ class InteractiveTelegramClient(TelegramClient):
             self.bot_controller.bot_reset()
             self.selected_user_activity = False
             dialog_count = int(self.config['messages']['initial_dialogs_limit'])
-            t_dialogs = await self.get_dialogs(limit=dialog_count)
+            if dialog_count <= 0:
+                dialog_count = None
+            t_dialogs = await self.get_dialogs(limit=dialog_count, archived=False, folder=0)
+            dialog_count = len(t_dialogs)
+
             t_dial_entity_ids = []
             dialogs = ["me"]
             for t_dialog in t_dialogs:

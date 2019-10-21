@@ -100,7 +100,10 @@ class BotController:
         self.active_entity_name = None
 
     def init_chat_for_user(self, user_id, show_bot_str=True):
-        pass
+        self.active_entity_client = self.tg_client
+        self.active_entity_is_bot = False
+        self.active_entity = PeerUser(user_id)
+        self.active_entity_id = user_id
 
     def is_active(self):
         return self.bot_active
@@ -143,7 +146,7 @@ class BotController:
             await self.bot_command(bot_message, from_id, entity_id, e_type)
             self.bot_reset()
             return True
-        elif self.is_active_for_entity(entity_id) or bot_check_message.startswith(self.tg_client.config['chat_bot']['bot_start_prefix']):
+        elif self.is_active_for_entity(entity_id) or ((self.tg_client.selected_user_activity == entity_id) and (bot_check_message.startswith(self.tg_client.config['chat_bot']['bot_start_prefix']))):
             if not self.is_active_for_entity(entity_id):
                 bot_message = bot_check_message.replace(self.tg_client.config['chat_bot']['bot_start_prefix'], '', 1).strip()
             else:
@@ -156,8 +159,9 @@ class BotController:
             return True
         return False
 
-    def text_to_bot_text(self, text):
-        place_code = self.get_curr_place_code()
+    def text_to_bot_text(self, text, place_code=None):
+        if not place_code:
+            place_code = self.get_curr_place_code()
         if place_code != 'bot':
             text = re.sub(r"\[bot_only\].*\[/bot_only\]", '', text, flags=re.MULTILINE | re.IGNORECASE)
             text = text.replace('[dialog_only]', '')
@@ -211,17 +215,17 @@ class BotController:
             return
         if not self.is_active_for_entity(from_entity_id):
             self.bot_active = True
-            if (from_entity_type=='Bot') and self.tg_client.tg_bot and bot_chat:
-                self.active_entity_client = self.tg_client.tg_bot
-                self.active_entity_is_bot = True
-                self.active_entity = bot_chat
-                self.active_entity_id = from_entity_id
-            else:
-                self.active_entity_client = self.tg_client
-                self.active_entity_is_bot = False
-                self.active_entity = PeerUser(from_entity_id)
-                self.active_entity_id = from_entity_id
-            self.active_entity_name = await self.tg_client.get_entity_name(from_entity_id, from_entity_type)
+        if (from_entity_type=='Bot') and self.tg_client.tg_bot and bot_chat:
+            self.active_entity_client = self.tg_client.tg_bot
+            self.active_entity_is_bot = True
+            self.active_entity = bot_chat
+            self.active_entity_id = from_entity_id
+        else:
+            self.active_entity_client = self.tg_client
+            self.active_entity_is_bot = False
+            self.active_entity = PeerUser(from_entity_id)
+            self.active_entity_id = from_entity_id
+        self.active_entity_name = await self.tg_client.get_entity_name(from_entity_id, from_entity_type)
 
         if not from_id:
             from_id = from_entity_id
@@ -273,7 +277,10 @@ class BotController:
             try:
                 entity = await self.tg_client.get_entity(str(params[0]).strip())
             except ValueError:
-                entity = await self.tg_client.get_entity(PeerUser(int(params[0])))
+                try:
+                    entity = await self.tg_client.get_entity(PeerUser(int(params[0])))
+                except:
+                    entity = None
             if type(entity) == User:
                 from_id = entity.id
         return from_id
