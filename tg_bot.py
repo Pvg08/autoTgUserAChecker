@@ -1,6 +1,9 @@
+from datetime import datetime
 
 from telethon import TelegramClient, events
 from telethon.tl.types import UpdateNewMessage
+
+from status_controller import StatusController
 
 
 class InteractiveTelegramBot(TelegramClient):
@@ -8,22 +11,29 @@ class InteractiveTelegramBot(TelegramClient):
     def __init__(self, session_file, api_id, api_hash, cl_conn, proxy, parent_client):
         print('Initialization of bot')
         self.tg_client = parent_client
-        self.me_entity = None
+        self.bot_entity = None
         super().__init__(session_file, api_id, api_hash, connection=cl_conn, proxy=proxy, sequential_updates=True)
 
     async def message_handler(self, event):
         if type(event.original_update) != UpdateNewMessage:
             return
-        if not self.me_entity:
-            self.me_entity = await self.get_entity(self.tg_client.config['tg_bot']['bot_username'])
+        if not self.bot_entity:
+            self.bot_entity = await self.get_entity(self.tg_client.config['tg_bot']['bot_username'])
         data = event.original_update
-        if data.message.from_id == self.me_entity.id:
+        if data.message.from_id == self.bot_entity.id:
             return
+        if data.message.from_id and (data.message.from_id != self.tg_client.me_user_id):
+            msg_entity_name = await self.tg_client.get_entity_name(data.message.from_id, 'User')
+            if msg_entity_name:
+                print(StatusController.datetime_to_str(datetime.now()) + ' Message to my bot from "' + msg_entity_name + '"')
+                print('<<< ' + str(data.message.message))
+                t_date = StatusController.tg_datetime_to_local_datetime(data.message.date)
+                self.tg_client.add_message_to_db(self.bot_entity.id, 'User', data.message.from_id, self.bot_entity.id, data.message.id, data.message.message, t_date, 0)
         bot_chat = await event.get_input_chat()
         if self.tg_client.aa_controller.is_setup_mode:
             if await self.tg_client.aa_controller.on_bot_message(data.message.message, data.message.from_id, bot_chat):
                 return
-        await self.tg_client.bot_controller.bot_command(data.message.message, data.message.from_id, self.me_entity.id, 'Bot', bot_chat)
+        await self.tg_client.bot_controller.bot_command(data.message.message, data.message.from_id, self.bot_entity.id, 'Bot', bot_chat)
 
     def do_start(self):
         print('Starting of bot')

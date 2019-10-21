@@ -615,8 +615,6 @@ class InteractiveTelegramClient(TelegramClient):
                     if entity_id and (e_type == 'Channel') and self.channel_is_megagroup(entity_id):
                         e_type = 'Megagroup'
 
-                    print(e_type + ' ' + str(entity_id))
-
                     if message and entity_id:
                         if (
                                 (int(self.config['messages']['write_messages_to_database']) == 1) and
@@ -674,13 +672,17 @@ class InteractiveTelegramClient(TelegramClient):
                     if is_message_new and (self.selected_user_activity == entity_id):
                         is_bot_message = await self.bot_controller.bot_check_message(message, from_id, entity_id, e_type)
 
+                    if need_show_message and is_message_edit and (int(self.config['messages']['display_edit_messages']) == 1):
+                        need_show_message = False
+
                     if need_show_message and not is_bot_message:
                         self.sprint('<<< ' + message.replace('\n', ' \\n '))
-                        if (e_type == 'User') and (from_id != self.me_user_id):
-                            await self.aa_controller.on_user_message(from_id, message)
 
-                    if (e_type == 'User') and (from_id == self.me_user_id):
-                        await self.aa_controller.on_me_write_message_to_user(entity_id)
+                    if (e_type == 'User') and not is_bot_message:
+                        if from_id == self.me_user_id:
+                            await self.aa_controller.on_me_write_message_to_user(entity_id)
+                        else:
+                            await self.aa_controller.on_user_message_to_me(from_id, message)
 
             elif type(update) in [UpdateDeleteChannelMessages, UpdateDeleteMessages]:
                 data = update.to_dict()
@@ -721,7 +723,7 @@ class InteractiveTelegramClient(TelegramClient):
                         if ('version' in msg) and (msg['version'] > 1):
                             msg_version = ' [version '+str(msg['version'])+']'
                         print(StatusController.datetime_to_str(datetime.now()) + ' Remove'+msg_from_name+' message ' + str(msg_id) + msg_version + ' from '+dialog_with_name+' "' + msg_entity_name + '"')
-                        if msg['message']:
+                        if msg['message'] and (int(self.config['messages']['display_remove_messages']) == 1):
                             print('<<< ' + str(msg['message']).replace('\n', '\\n'))
 
             elif type(update) == UpdateReadHistoryOutbox:

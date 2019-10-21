@@ -29,21 +29,32 @@ class AutoAnswers:
             'message': ''
         }
 
+    def reset_aa(self):
+        self.aa_options['is_set'] = False
+        self.is_setup_mode = False
+        self.setup_step = 0
+        self.setup_user_id = None
+        self.aa_for_users = {}
+        self.aa_not_for_users = []
+
     async def begin_setup(self, from_id, active_entity_client, dialog_entity):
+        if not self.aa_user_name:
+            self.aa_user_name = self.tg_bot_controller.tg_client.me_user_name
         if (self.setup_user_id is not None) and self.active_entity_client and self.active_dialog_entity:
             str_user_name = await self.tg_bot_controller.tg_client.get_entity_name(from_id, 'User')
             await self.active_entity_client.send_message(self.active_dialog_entity, 'Процесс настройки прерван ' + str_user_name)
             await active_entity_client.send_message(dialog_entity, 'Прервали настройку ' + str_user_name)
         self.active_entity_client = active_entity_client
         self.active_dialog_entity = dialog_entity
-        self.aa_user_name = self.tg_bot_controller.tg_client.me_user_name
+        if self.aa_options['is_set']:
+            self.is_setup_mode = True
+            self.setup_user_id = from_id
+            await self.next_setup_step(100)
+            return
         await self.active_entity_client.send_message(dialog_entity, 'Настраиваем автоответчик для ' + self.aa_user_name)
-        self.aa_options['is_set'] = False
+        self.reset_aa()
         self.is_setup_mode = True
-        self.setup_step = 0
         self.setup_user_id = from_id
-        self.aa_for_users = {}
-        self.aa_not_for_users = []
         await self.next_setup_step()
 
     async def next_setup_step(self, next_step=None):
@@ -92,10 +103,17 @@ class AutoAnswers:
                     msg = msg + k + ' = ' + str(v) + '\n'
             msg = msg + '```'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
-            self.is_setup_mode = False
-            self.setup_step = 0
-            self.setup_user_id = None
+            self.reset_aa()
             self.aa_options['is_set'] = True
+        elif self.setup_step == 100:
+            msg = 'Автоответчик для ' + self.aa_user_name + ' уже настроен.\n\nПараметры:\n'
+            msg = msg + '```'
+            for k, v in self.aa_options.items():
+                if k != 'is_set':
+                    msg = msg + k + ' = ' + str(v) + '\n'
+            msg = msg + '```\n'
+            msg = msg + 'отключить его?'
+            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
 
     async def on_bot_message(self, message, from_id, dialog_entity):
         if (not self.is_setup_mode) or (self.setup_user_id != from_id) or (message == '/auto'):
@@ -162,8 +180,18 @@ class AutoAnswers:
             if not message or (message == '-') or (message == '0'):
                 message = self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message']
             self.aa_options['message'] = message
-
             await self.next_setup_step()
+        elif self.setup_step == 100:
+            message = message.lower()
+            self.aa_options['is_set'] = message not in ['да', 'yes', '1']
+            if not self.aa_options['is_set']:
+                await self.active_entity_client.send_message(self.active_dialog_entity, 'Автоответчик отключен!')
+                self.reset_aa()
+            else:
+                await self.active_entity_client.send_message(self.active_dialog_entity, 'Понял. Оставляю включенным')
+                self.is_setup_mode = False
+                self.setup_step = 0
+                self.setup_user_id = None
         return True
 
     async def send_message(self, to_id):
@@ -177,7 +205,7 @@ class AutoAnswers:
         print(PeerUser(to_id))
         print(message)
 
-    async def on_user_message(self, from_id, message_text):
+    async def on_user_message_to_me(self, from_id, message_text):
         if from_id in self.aa_not_for_users:
             print('AA not user! ' + str(from_id))
             return
