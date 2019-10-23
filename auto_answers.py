@@ -108,7 +108,7 @@ class AutoAnswers:
             msg = '**Настройка завершена!!!**\n\n'
             msg = msg + '```'
             for k, v in self.aa_options.items():
-                if k != 'is_set':
+                if k not in ['is_set', 'notify_entity_client', 'notify_entity_dialog']:
                     msg = msg + k + ' = ' + str(v) + '\n'
             msg = msg + '```'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())

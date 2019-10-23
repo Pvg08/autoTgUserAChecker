@@ -4,6 +4,7 @@ import traceback
 from datetime import datetime, timedelta
 
 import apiai
+import pyowm
 from telethon.tl.types import PeerUser, User, UserStatusOnline, UserStatusOffline
 
 from status_controller import StatusController
@@ -21,6 +22,7 @@ class BotController:
         self.active_entity_client = None
         self.active_entity_name = None
         self.users_rights = {}
+        self.users = {}
         self.right_levels = {
             '0': 'all',
             '1': 'contacts',
@@ -139,6 +141,13 @@ class BotController:
         self.active_entity_name = None
 
     def init_chat_for_user(self, user_id, show_bot_str=True):
+        str_user_id = str(user_id)
+        self.users[str_user_id] = {
+            'entity_client': self.tg_client,
+            'entity_is_bot': False,
+            'entity': PeerUser(user_id),
+            'entity_id': user_id,
+        }
         self.active_entity_client = self.tg_client
         self.active_entity_is_bot = False
         self.active_entity = PeerUser(user_id)
@@ -158,12 +167,48 @@ class BotController:
 
     def text_message(self, message_text):
         try:
-            api = apiai.ApiAI(str(self.tg_client.config['chat_bot']['bot_client_token']), str(self.tg_client.config['chat_bot']['bot_session_name']))
+            weather_words = str(self.tg_client.config['chat_bot']['bot_weather_keywords'])
+            weather_words = weather_words.split('|')
+            message_text_words = re.findall(r'\w+', message_text)
+            intersect_words = set(message_text_words).intersection(weather_words)
+            is_weather = (len(intersect_words) > 0) and self.tg_client.config['chat_bot']['bot_weather_owm_api_key']
+            if not is_weather:
+                api = apiai.ApiAI(str(self.tg_client.config['chat_bot']['bot_client_token']), str(self.tg_client.config['chat_bot']['bot_session_name']))
+            else:
+                api = apiai.ApiAI(str(self.tg_client.config['chat_bot']['bot_client_token_weather']), str(self.tg_client.config['chat_bot']['bot_session_name_weather']))
             request = api.text_request()
             request.lang = 'ru'
             request.query = message_text
             response_json = json.loads(request.getresponse().read().decode('utf-8'))
-            response = response_json['result']['fulfillment']['speech']
+
+            if is_weather:
+                city = None
+                if response_json['result']['parameters'] and response_json['result']['parameters']['address'] and response_json['result']['parameters']['address']['city']:
+                    city = response_json['result']['parameters']['address']['city']
+                if not city:
+                    city = str(self.tg_client.config['chat_bot']['bot_weather_city_default'])
+                owm = pyowm.OWM(str(self.tg_client.config['chat_bot']['bot_weather_owm_api_key']), language="ru", use_ssl=True)
+                observation = owm.weather_at_place(city)
+                w = observation.get_weather()
+                status = w.get_detailed_status() + ' (облачность '+str(w.get_clouds())+'%)'
+                pressure_res = w.get_pressure()
+                pressure = str(pressure_res.get('press')) + ' мм.рт.ст.'
+                visibility_distance = str(w.get_visibility_distance()) + ' м.'
+                wind_res = w.get_wind()
+                wind_speed = str(wind_res.get('speed')) + ' м/с'
+                humidity = str(w.get_humidity()) + '%'
+                celsius_result = w.get_temperature('celsius')
+                temp_min_celsius = str(celsius_result.get('temp_min')) + '°C'
+                temp_max_celsius = str(celsius_result.get('temp_max')) + '°C'
+                response = "Текущая погода в г. " + city + ": \n" + \
+                           status + "\n" + \
+                           "Температура:\n    Макс: " + temp_max_celsius + "\n    Мин: " + temp_min_celsius + "\n"+\
+                           "Влажность: " + humidity + "\n"+\
+                           "Давление: " + pressure + "\n"+\
+                           "Видимость: " + visibility_distance + "\n"+\
+                           "Ветер: " + wind_speed + "\n"
+            else:
+                response = response_json['result']['fulfillment']['speech']
             if response:
                 return response
         except:

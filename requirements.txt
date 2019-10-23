@@ -9,3 +9,4 @@ psutil
 requests
 ipython
 nbformat
+pyowm
