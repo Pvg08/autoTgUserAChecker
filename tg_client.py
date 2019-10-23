@@ -1045,6 +1045,7 @@ class InteractiveTelegramClient(TelegramClient):
             print('  !Q:  Deselect entity and exits.')
             print('  !D:  Get entity data (for debug purpose).')
             if type(entity) == User:
+                print('  !A:  Append to AA & run AA if not set. optional param - message for AA')
                 print('  !L:  Logs only selected user online activity to file (until !L).')
                 print('  !LD: Prints log activity - intervals.')
                 print('  !LE: Prints log activity for CSV.')
@@ -1063,10 +1064,13 @@ class InteractiveTelegramClient(TelegramClient):
                 msg = await self.async_input('Enter a command: ')
                 param1 = None
                 param2 = None
+                params_text = None
                 msg_words = str(msg).split(" ")
                 if len(msg_words) > 1:
                     msg = msg_words[0]
                     param1 = msg_words[1]
+                    params_text = msg_words[1:]
+                    params_text = " ".join(params_text)
                     if len(msg_words) > 2:
                         param2 = msg_words[2]
                 # Quit
@@ -1081,6 +1085,8 @@ class InteractiveTelegramClient(TelegramClient):
                     p_types = {'!LD': "diap", '!LE': "excel", '!LP': "plot"}
                     await self.status_controller.print_user_activity(entity.id, get_display_name(entity), p_types[msg],
                                                                      param1, (param2 == '1'))
+                elif (msg == '!A') and (type(entity) == User):
+                    await self.aa_controller.force_add_user(entity.id, params_text)
                 elif (msg == '!L') and (type(entity) == User):
                     self.log_user_activity = entity.id
                     self.print_title('Print !L to exit or !C to reconnect...')

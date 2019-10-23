@@ -1,5 +1,5 @@
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from telethon.tl import functions
 from telethon.tl.functions.messages import GetDialogsRequest
@@ -26,12 +26,17 @@ class AutoAnswers:
             'is_set': False,
             'from_mode': 0,
             'from_user_ids': [],
-            'activate_after_minutes': 100000,
-            'answer_after_minutes': 100000,
+            'activate_after_minutes': 100000.0,
+            'answer_after_minutes': 100000.0,
             'show_bot': True,
             'allow_bot_chat': False,
+            'notify_entity_client': None,
+            'notify_entity_dialog': None,
             'message': ''
         }
+
+    def is_active(self):
+        return self.aa_options['is_set']
 
     def reset_aa(self):
         self.aa_options['is_set'] = False
@@ -107,29 +112,42 @@ class AutoAnswers:
                     msg = msg + k + ' = ' + str(v) + '\n'
             msg = msg + '```'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+            self.aa_options['notify_entity_client'] = self.active_entity_client
+            self.aa_options['notify_entity_dialog'] = self.active_dialog_entity
             self.reset_aa()
             self.aa_options['is_set'] = True
         elif self.setup_step == 100:
             msg = 'Автоответчик для ' + self.aa_user_name + ' уже настроен и запущен.\n\nПараметры:\n'
             msg = msg + '```'
             for k, v in self.aa_options.items():
-                if k != 'is_set':
+                if k not in ['is_set', 'notify_entity_client', 'notify_entity_dialog']:
                     msg = msg + k + ' = ' + str(v) + '\n'
             msg = msg + '```\n'
-            msg = msg + 'Ожидающие ответа пользователи: '
+            msg = msg + 'Пользователи: '
             if len(self.aa_for_users) > 0:
                 for user_id, user_date in self.aa_for_users.items():
                     msg = msg + '\n'
-                    msg = msg + (await self.tg_bot_controller.tg_client.get_entity_name(int(user_id), 'User'))
-                    msg = msg + ' --- '
+                    msg = msg + (await self.tg_bot_controller.user_link(user_id))
+                    msg = msg + ' **---** '
                     if user_date:
-                        msg = msg + StatusController.datetime_to_str(user_date)
+                        msg = msg + 'Ждёт с ' + StatusController.datetime_to_str(user_date)
                     else:
-                        msg = msg + 'Завершено'
+                        msg = msg + 'Сообщение отправлено'
             else:
                 msg = msg + 'Отсутствуют'
             msg = msg + '\n\n'
-            msg = msg + 'отключить автоответчик?'
+            msg = msg + 'выберите дальнейшее действие:\n'
+            msg = msg + '/auto_off - отключить автоответчик\n'
+            msg = msg + '/auto_restart - начать настройку повторно\n'
+            msg = msg + '/auto_set_time - указать дату/время прибытия\n'
+            msg = msg + '/auto_reset_users - сбросить флаги ответа пользователям\n'
+            msg = msg + '/auto_back - вернуться\n'
+            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+        elif self.setup_step == 200:
+            msg = '**Настройка даты/времени прибытия**\n\n'
+            msg = msg + 'оно будет указано ботом в начальном сообщении вида:\n'
+            msg = msg + '```'+self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message_time']+'```\n'
+            msg = msg + 'Введите дату/время'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
 
     async def on_bot_message(self, message, from_id, dialog_entity):
@@ -170,17 +188,17 @@ class AutoAnswers:
             else:
                 await self.next_setup_step(2)
         elif self.setup_step == 3:
-            num_msg = int(message)
-            if num_msg < 1:
-                num_msg = 1
+            num_msg = float(message)
+            if num_msg < 0.01:
+                num_msg = 0.0
             elif num_msg > 999999999999:
                 num_msg = 999999999999
             self.aa_options['activate_after_minutes'] = num_msg
             await self.next_setup_step()
         elif self.setup_step == 4:
-            num_msg = int(message)
-            if num_msg < 1:
-                num_msg = 1
+            num_msg = float(message)
+            if num_msg < 0.01:
+                num_msg = 0.0
             elif num_msg > 999999999999:
                 num_msg = 999999999999
             self.aa_options['answer_after_minutes'] = num_msg
@@ -200,15 +218,37 @@ class AutoAnswers:
             await self.next_setup_step()
         elif self.setup_step == 100:
             message = message.lower()
-            self.aa_options['is_set'] = message not in ['да', 'yes', '1']
-            if not self.aa_options['is_set']:
-                await self.active_entity_client.send_message(self.active_dialog_entity, 'Автоответчик отключен!')
-                self.reset_aa()
-            else:
+            if message == '/auto_back':
                 await self.active_entity_client.send_message(self.active_dialog_entity, 'Понял. Оставляю включенным')
                 self.is_setup_mode = False
                 self.setup_step = 0
                 self.setup_user_id = None
+            elif message == '/auto_off':
+                self.aa_options['is_set'] = False
+                await self.active_entity_client.send_message(self.active_dialog_entity, 'Автоответчик отключен!')
+                self.reset_aa()
+            elif message == '/auto_restart':
+                self.aa_options['is_set'] = False
+                entity_client = self.active_entity_client
+                entity_dialog = self.active_dialog_entity
+                self.reset_aa()
+                await self.begin_setup(from_id, entity_client, entity_dialog)
+            elif message == '/auto_reset_users':
+                self.aa_for_users = {}
+                self.aa_not_for_users = []
+                await self.active_entity_client.send_message(self.active_dialog_entity, 'Выполнено!')
+                self.is_setup_mode = False
+                self.setup_step = 0
+                self.setup_user_id = None
+            elif message == '/auto_set_time':
+                await self.next_setup_step(200)
+        elif self.setup_step == 200:
+            await self.active_entity_client.send_message(self.active_dialog_entity, 'Сообщение изменено!')
+            self.aa_options['message'] = self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message_time']
+            self.aa_options['message'] = self.aa_options['message'].replace('[datetime]', message)
+            self.is_setup_mode = False
+            self.setup_step = 0
+            self.setup_user_id = None
         return True
 
     async def send_message(self, to_id):
@@ -219,9 +259,14 @@ class AutoAnswers:
         else:
             message = self.tg_bot_controller.text_to_bot_text(message, "bot")
         to_username = await self.tg_bot_controller.tg_client.get_entity_name(to_id, 'User')
-        print(StatusController.datetime_to_str(datetime.now()) + ' Sending AA message to user "'+to_username+'"')
-        print('<<< ' + message)
+        msg_log = StatusController.datetime_to_str(datetime.now()) + ' Sending AA message to user "'+to_username+'"'
+        msg_log = msg_log + '\n' + '<<< ' + message
+        print(msg_log)
         await self.tg_bot_controller.tg_client.send_message(PeerUser(to_id), message)
+        if self.aa_options['notify_entity_client'] and self.aa_options['notify_entity_dialog']:
+            msg_log = StatusController.datetime_to_str(datetime.now()) + ' Отправляем сообщение пользователю ' + (await self.tg_bot_controller.user_link(to_id, to_username))
+            msg_log = msg_log + '\n' + '``` ' + message + '```'
+            await self.aa_options['notify_entity_client'].send_message(self.aa_options['notify_entity_dialog'], msg_log)
 
     async def on_user_message_to_me(self, from_id, message_text):
         if not self.aa_options['is_set']:
@@ -245,22 +290,22 @@ class AutoAnswers:
         self.aa_for_users[str_from_id] = StatusController.now_local_datetime()
         check_user_name = await self.tg_bot_controller.tg_client.get_entity_name(from_id, 'User')
         print(StatusController.datetime_to_str(datetime.now()) + ' Adding AA schedule for user "' + check_user_name + '"')
-        if self.aa_options['answer_after_minutes'] == 0:
+        if self.aa_options['answer_after_minutes'] <= 0.05:
             await self.on_timer([str(from_id)])
 
     async def on_timer(self, check_ids=None):
         try:
             if not self.aa_options['is_set']:
                 return
-            if ((datetime.now() - self.tg_bot_controller.tg_client.me_last_activity).total_seconds() / 60) < self.aa_options['activate_after_minutes']:
+            if ((datetime.now() - self.tg_bot_controller.tg_client.me_last_activity).total_seconds() / 60.0) < self.aa_options['activate_after_minutes']:
                 return
             if not check_ids:
-                check_ids = self.aa_for_users.keys()
+                check_ids = list(self.aa_for_users.keys())
             dialogs = None
             for str_check_id in check_ids:
                 check_id = int(str_check_id)
                 if (str_check_id in self.aa_for_users) and self.aa_for_users[str_check_id]:
-                    if ((StatusController.now_local_datetime() - self.aa_for_users[str_check_id]).total_seconds() / 60) >= self.aa_options['answer_after_minutes']:
+                    if ((StatusController.now_local_datetime() - self.aa_for_users[str_check_id]).total_seconds() / 60.0) >= self.aa_options['answer_after_minutes']:
 
                         if not dialogs:
                             input_peer = await self.tg_bot_controller.tg_client.get_input_entity(PeerUser(check_id))
@@ -278,7 +323,7 @@ class AutoAnswers:
                         c_dialog = None
                         if dialogs:
                             for dialog in dialogs:
-                                if (type(dialog.peer) == PeerUser) and (dialog.peer.user_id == check_id):
+                                if (type(dialog.peer) == PeerUser) and (dialog.peer.user_id == check_id) and (dialog.read_inbox_max_id > 0):
                                     c_dialog = dialog
                                     break
 
@@ -301,7 +346,7 @@ class AutoAnswers:
                             do_remove_aa_user_record = True
 
                         if do_remove_aa_user_record:
-                            self.aa_for_users[str_check_id] = None
+                            del self.aa_for_users[str_check_id]
                             check_user_name = await self.tg_bot_controller.tg_client.get_entity_name(check_id, 'User')
                             print(StatusController.datetime_to_str(datetime.now()) + ' Removing AA schedule for user "'+check_user_name+'"')
                             continue
@@ -319,6 +364,37 @@ class AutoAnswers:
             return
         str_check_id = str(to_user_id)
         if (str_check_id in self.aa_for_users) and self.aa_for_users[str_check_id]:
-            self.aa_for_users[str_check_id] = None
+            del self.aa_for_users[str_check_id]
             check_user_name = await self.tg_bot_controller.tg_client.get_entity_name(to_user_id, 'User')
             print(StatusController.datetime_to_str(datetime.now()) + ' Removing AA schedule for user "' + check_user_name + '"')
+
+    async def force_add_user(self, user_id, message=None):
+        if not self.aa_options['is_set']:
+            self.tg_bot_controller.tg_client.me_last_activity = datetime.now()  + timedelta(minutes=-10)
+            if not self.aa_user_name:
+                self.aa_user_name = self.tg_bot_controller.tg_client.me_user_name
+            if not message:
+                message = self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message']
+            self.reset_aa()
+            self.aa_options = {
+                'is_set': True,
+                'from_mode': 4,
+                'from_user_ids': [],
+                'activate_after_minutes': 10.0,
+                'answer_after_minutes': 2.0,
+                'show_bot': True,
+                'allow_bot_chat': True,
+                'notify_entity_client': None,
+                'notify_entity_dialog': None,
+                'message': ''
+            }
+        self.aa_options['from_mode'] = 4
+        if user_id not in self.aa_options['from_user_ids']:
+            self.aa_options['from_user_ids'].append(user_id)
+        if user_id in self.aa_not_for_users:
+            self.aa_not_for_users.remove(user_id)
+        if str(user_id) in self.aa_for_users:
+            del self.aa_for_users[str(user_id)]
+        if message:
+            self.aa_options['message'] = message
+        await self.on_user_message_to_me(user_id, '---')

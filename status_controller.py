@@ -87,23 +87,63 @@ class StatusController:
             return res
         return []
 
+    @staticmethod
+    def workdays(d, end, allowed_days):
+        days = []
+        while d.date() <= end.date():
+            if d.isoweekday() in allowed_days:
+                days.append(d)
+            d += timedelta(days=1)
+        return days
+
     async def print_user_activity(self, user_id, user_name, print_type="diap", date_activity=None, result_only_time=False):
         result = []
 
-        if date_activity:
-            date_activity = StatusController.datetime_from_str(date_activity, "%Y-%m-%d")
+        date_activity2 = None
 
-        result.append('Printing user activity (' + str(user_id) + " " + str(print_type) + " " + str(date_activity) + " " + str(
-            result_only_time) + ')')
-        result.append('')
+        week_days_str = None
+        week_days = None
+        if date_activity == "weekday":
+            week_days = [1,2,3,4,5]
+            date_activity = None
+        elif date_activity == "weekend":
+            week_days = [6,7]
+            date_activity = None
+
+        if week_days:
+            week_days_str = ",".join(["'"+str(x)+"'" for x in week_days])
+
         if date_activity:
+            if type(date_activity) is tuple:
+                date_activity, date_activity2 = date_activity
+                date_activity2 = StatusController.datetime_from_str(date_activity2, "%Y-%m-%d")
+                date_activity2 = StatusController.datetime_to_str(date_activity2, "%Y-%m-%d")
+            date_activity = StatusController.datetime_from_str(date_activity, "%Y-%m-%d")
+            date_activity = StatusController.datetime_to_str(date_activity, "%Y-%m-%d")
+
+        if week_days:
+            activity_str = 'Weekday in [' + str(week_days) + ']'
+            rows = self.db_conn.execute("""
+                SELECT *, strftime('%w', `taken_at`) as 'weekday' FROM `activity` WHERE `user_id` = ? AND weekday IN ({}) ORDER BY `taken_at` ASC
+            """.format(week_days_str), [str(user_id)]).fetchall()
+        elif date_activity and date_activity2:
+            activity_str = 'Date in [' + date_activity + ' .. ' + date_activity2 + ']'
+            rows = self.db_conn.execute("""
+                SELECT * FROM `activity` WHERE `user_id` = ? AND `taken_at`>=? AND `taken_at`<=? ORDER BY `taken_at` ASC
+            """, [str(user_id), date_activity, date_activity2]).fetchall()
+        elif date_activity:
+            activity_str = 'Date=' + date_activity
             rows = self.db_conn.execute("""
                 SELECT * FROM `activity` WHERE `user_id` = ? AND `taken_at` LIKE ? ORDER BY `taken_at` ASC
-            """, [str(user_id), self.datetime_to_str(date_activity, '%Y-%m-%d') + " %"]).fetchall()
+            """, [str(user_id), date_activity + " %"]).fetchall()
         else:
+            activity_str = 'Date=All'
             rows = self.db_conn.execute("""
                 SELECT * FROM `activity` WHERE `user_id` = ? ORDER BY `taken_at` ASC
             """, [str(user_id)]).fetchall()
+
+        result.append('Printing user activity (User=' + str(user_id) + " Type=" + str(print_type) + " " + activity_str + " onlyTime=" + str(result_only_time) + ')')
+        result.append('')
 
         current_year = datetime.now().year
         current_month = datetime.now().month
@@ -176,7 +216,13 @@ class StatusController:
             last_date = diaps_full[len(diaps_full) - 1][0].replace(microsecond=0, second=0, minute=0, hour=0)
             end_date = last_date + timedelta(days=1)
             delta_seconds = (end_date - first_date).total_seconds()
-            days_count_full = math.ceil(delta_seconds / 86400)
+
+            if week_days:
+                days_count_full = len(self.workdays(first_date, end_date, week_days))
+                if days_count_full < 1:
+                    days_count_full = 1
+            else:
+                days_count_full = math.ceil(delta_seconds / 86400)
 
             first_date = diaps[0][0].replace(microsecond=0, second=0, minute=0, hour=0)
             last_date = diaps[len(diaps) - 1][0].replace(microsecond=0, second=0, minute=0, hour=0)
@@ -194,9 +240,14 @@ class StatusController:
             if is_csv:
                 result.append('Number;Datetime from;Datetime to;Hour;Seconds using Telegram;Times Telegram was used')
             plot_title = 'Activity of user "' + user_name + '"'
-            if date_activity:
+
+            if week_days:
+                plot_title = plot_title + ', WeekDays: ' + str(week_days)
+            elif date_activity and date_activity2:
+                plot_title = plot_title + ', Date: ' + date_activity + " .. " + date_activity2
+            elif date_activity:
                 if days_count_full == 1:
-                    plot_title = plot_title + ', Date: ' + self.datetime_to_str(date_activity, '%Y-%m-%d')
+                    plot_title = plot_title + ', Date: ' + date_activity
             else:
                 plot_title = plot_title + ', full log data'
 

@@ -1,7 +1,7 @@
 import json
 import re
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import apiai
 from telethon.tl.types import PeerUser, User, UserStatusOnline, UserStatusOffline
@@ -28,6 +28,7 @@ class BotController:
             '3': 'pre selected',
             '4': 'only me'
         }
+        self.max_commands = 11
         self.commands = {
             '/start': {
                 'cmd': self.cmd_start,
@@ -57,7 +58,27 @@ class BotController:
                 'cmd': self.cmd_auto_answer,
                 'places': ['bot'],
                 'rights_level': 3,
-                'desc': 'автоответчик'
+                'desc': 'автоответчик - начальная настройка или изменение настроек'
+            },
+            '/auto_back': {
+                'places': [],
+                'rights_level': 10,
+                'desc': None
+            },
+            '/auto_off': {
+                'places': [],
+                'rights_level': 10,
+                'desc': None
+            },
+            '/auto_restart': {
+                'places': [],
+                'rights_level': 10,
+                'desc': None
+            },
+            '/auto_reset_users': {
+                'places': [],
+                'rights_level': 10,
+                'desc': None
             },
             '/user_info': {
                 'cmd': self.cmd_user_info,
@@ -83,11 +104,29 @@ class BotController:
                 'rights_level': 3,
                 'desc': 'график активности пользователя за всё время. Параметр - логин/ID пользователя. Без параметра показывает твой график'
             },
+            '/plot_week': {
+                'cmd': self.cmd_plot_week,
+                'places': ['bot', 'dialog'],
+                'rights_level': 3,
+                'desc': 'график активности пользователя за неделю. Параметр - логин/ID пользователя. Без параметра показывает твой график'
+            },
             '/plot_hours': {
                 'cmd': self.cmd_plot_hours,
                 'places': ['bot', 'dialog'],
                 'rights_level': 3,
                 'desc': 'статистика активности пользователя по часам за всё время. Параметр - логин/ID пользователя. Без параметра показывает твой график'
+            },
+            '/plot_hours_weekday': {
+                'cmd': self.cmd_plot_hours_weekday,
+                'places': ['bot', 'dialog'],
+                'rights_level': 3,
+                'desc': 'статистика активности пользователя по часам за будние дни. Параметр - логин/ID пользователя. Без параметра показывает твой график'
+            },
+            '/plot_hours_weekend': {
+                'cmd': self.cmd_plot_hours_weekend,
+                'places': ['bot', 'dialog'],
+                'rights_level': 3,
+                'desc': 'статистика активности пользователя по часам за выходные. Параметр - логин/ID пользователя. Без параметра показывает твой график'
             }
         }
 
@@ -235,14 +274,20 @@ class BotController:
             command_code = command_parts[0]
             curr_place = self.get_curr_place_code()
             curr_rights = await self.get_user_rights_level(from_id)
-            if (curr_place in self.commands[command_code]['places']) and (curr_rights >= self.commands[command_code]['rights_level']):
+            if (
+                    (curr_place in self.commands[command_code]['places']) and
+                    (curr_rights >= self.commands[command_code]['rights_level']) and
+                    (('condition' not in self.commands[command_code]) or self.commands[command_code]['condition']()) and
+                    ('cmd' in self.commands[command_code]) and
+                    self.commands[command_code]['cmd']
+            ):
                 try:
                     await self.commands[command_code]['cmd'](from_id, command_parts[1:])
                 except:
                     traceback.print_exc()
                     await self.active_entity_client.send_message(self.active_entity, self.text_to_bot_text('Какая-то ошибка!'))
             else:
-                await self.active_entity_client.send_message(self.active_entity, self.text_to_bot_text('Не хватает прав на выполнение команды!'))
+                await self.active_entity_client.send_message(self.active_entity, self.text_to_bot_text('Невозможно выполнить команду!'))
             return
 
         response_text = self.text_message(command_text)
@@ -260,9 +305,14 @@ class BotController:
             result_str.append('Привет, я - чат-бот (и не только)')
         commands_results = []
         for k in self.commands.keys():
-            if self.commands[k]['desc'] and (curr_place in self.commands[k]['places']) and (curr_rights >= self.commands[k]['rights_level']):
+            if (
+                    self.commands[k]['desc'] and
+                    (curr_place in self.commands[k]['places']) and
+                    (curr_rights >= self.commands[k]['rights_level']) and
+                    (('condition' not in self.commands[k]) or self.commands[k]['condition']())
+            ):
                 commands_results.append(''+ k + ' - ' + str(self.commands[k]['desc']))
-        result_str.append('\nСписок доступных для тебя моих команд ('+str(len(commands_results))+'/'+str(len(self.commands) - 1)+'):\n')
+        result_str.append('\nСписок доступных для тебя моих команд ('+str(len(commands_results))+'/'+str(self.max_commands)+'):\n')
         result_str = result_str + commands_results
         result_str.append('')
         result_str = ("\n".join(result_str))
@@ -285,7 +335,12 @@ class BotController:
                 from_id = entity.id
         return from_id
 
-    async def send_activity_message(self, from_id, to_entity, date_activity=None, result_only_time=False, a_type="plot_img"):
+    async def user_link(self, user_id, user_name=None):
+        if not user_name:
+            user_name = await self.tg_client.get_entity_name(user_id, 'User')
+        return "["+user_name+"](tg://user?id="+str(user_id)+")"
+
+    async def send_activity_message(self, from_id, to_entity, date_activity=None, result_only_time=False, a_type="plot_img", img_caption="График активности [user]"):
         from_name = await self.tg_client.get_entity_name(from_id)
         status_results = await self.tg_client.status_controller.print_user_activity(from_id, from_name, a_type, date_activity, result_only_time)
         status_results = status_results.strip().splitlines()
@@ -293,7 +348,8 @@ class BotController:
         if a_type=="plot_img":
             last_str = str(status_results.pop())
         if last_str and last_str.startswith(self.tg_client.config['main']['files_folder'] + "/"):
-            await self.active_entity_client.send_file(to_entity, last_str, caption="График активности ["+from_name+"](tg://user?id="+str(from_id)+")")
+            u_link = await self.user_link(from_id, from_name)
+            await self.active_entity_client.send_file(to_entity, last_str, caption=img_caption.replace('[user]', u_link), force_document=True)
         else:
             full_results = "\n".join(status_results)
             if (len(full_results) + 8) >= 4096:
@@ -368,15 +424,29 @@ class BotController:
     async def cmd_plot_today(self, from_id, params):
         from_id = await self.get_from_id_param(from_id, params)
         now_str = StatusController.datetime_to_str(datetime.now(),'%Y-%m-%d')
-        await self.send_activity_message(from_id, self.active_entity, now_str)
+        await self.send_activity_message(from_id, self.active_entity, now_str, img_caption="График активности [user] за сегодня")
 
     async def cmd_plot_all(self, from_id, params):
         from_id = await self.get_from_id_param(from_id, params)
-        await self.send_activity_message(from_id, self.active_entity, None)
+        await self.send_activity_message(from_id, self.active_entity, None, img_caption="График активности [user] за всё время")
+
+    async def cmd_plot_week(self, from_id, params):
+        from_id = await self.get_from_id_param(from_id, params)
+        date_str1 = StatusController.datetime_to_str(datetime.now() + timedelta(days=-6), '%Y-%m-%d')
+        date_str2 = StatusController.datetime_to_str(datetime.now() + timedelta(days=1), '%Y-%m-%d')
+        await self.send_activity_message(from_id, self.active_entity, (date_str1, date_str2), img_caption="График активности [user] за неделю")
 
     async def cmd_plot_hours(self, from_id, params):
         from_id = await self.get_from_id_param(from_id, params)
-        await self.send_activity_message(from_id, self.active_entity, None, True)
+        await self.send_activity_message(from_id, self.active_entity, None, True, img_caption="График активности [user] по часам")
+
+    async def cmd_plot_hours_weekend(self, from_id, params):
+        from_id = await self.get_from_id_param(from_id, params)
+        await self.send_activity_message(from_id, self.active_entity, "weekend", True, img_caption="График активности [user] по часам за выходные")
+
+    async def cmd_plot_hours_weekday(self, from_id, params):
+        from_id = await self.get_from_id_param(from_id, params)
+        await self.send_activity_message(from_id, self.active_entity, "weekday", True, img_caption="График активности [user] по часам за будние дни")
 
     async def cmd_devices(self, from_id, params):
         await self.active_entity_client.send_message(self.active_entity, 'Не хватает прав на выполнение команды!')
