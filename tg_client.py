@@ -674,13 +674,13 @@ class InteractiveTelegramClient(TelegramClient):
                     if is_message_new and (e_type in ['User', 'Bot']) and (
                             ((to_id == self.me_user_id) and (from_id == self.selected_user_activity)) or
                             ((from_id == self.me_user_id) and (to_id == self.selected_user_activity)) or
-                            self.bot_controller.is_active_for_entity(entity_id)
+                            self.bot_controller.is_active_for_user(entity_id, False)
                     ) and (
                             (not self.tg_bot) or
                             (not self.tg_bot.bot_entity) or
                             (self.tg_bot.bot_entity.id != entity_id)
                     ):
-                        is_bot_message = await self.bot_controller.bot_check_message(message, from_id, entity_id, e_type)
+                        is_bot_message = await self.bot_controller.bot_check_user_message(message, from_id, entity_id, e_type)
 
                     if need_show_message and is_message_edit and (int(self.config['messages']['display_edit_messages']) == 1):
                         need_show_message = False
@@ -902,7 +902,7 @@ class InteractiveTelegramClient(TelegramClient):
         self.log_user_activity = (int(self.config['activity']['write_all_activity_to_database']) == 1)
 
         while True:
-            self.bot_controller.bot_reset()
+            self.bot_controller.stop_chat_with_all_users()
             self.selected_user_activity = False
             dialog_count = int(self.config['messages']['initial_dialogs_limit'])
             if dialog_count <= 0:

@@ -1,6 +1,7 @@
 import traceback
 from datetime import datetime, timedelta
 
+import re
 from telethon.tl import functions
 from telethon.tl.functions.messages import GetDialogsRequest
 from telethon.tl.types import User, PeerUser
@@ -22,6 +23,8 @@ class AutoAnswers:
         self.aa_for_users = {}
         self.aa_not_for_users = []
         self.aa_user_name = None
+        self.yes_variants = ['1', 'да', 'ок', 'yes', 'ok', 'y', 'хорошо', '+']
+        self.no_variants = ['0', 'нет', 'не', 'no', 'not', 'n', '-']
         self.aa_options = {
             'is_set': False,
             'from_mode': 0,
@@ -94,15 +97,20 @@ class AutoAnswers:
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
         elif self.setup_step == 5:
             msg = '**Шаг 4**\n\n'
-            msg = msg + 'Показывать, что отвечает бот? (да/нет/yes/no/1/0)'
+            msg = msg + 'Показывать, что отвечает бот?'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
         elif self.setup_step == 6:
             msg = '**Шаг 5**\n\n'
-            msg = msg + 'После сообщения позволить боту продолжить диалог? (да/нет/yes/no/1/0)'
+            msg = msg + 'После сообщения позволить боту продолжить диалог?'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
         elif self.setup_step == 7:
             msg = '**Шаг 6**\n\n'
-            msg = msg + 'Ну и наконец, введите текст сообщения (тире или 0 чтобы использовать стандартное).'
+            msg = msg + 'Ну и наконец, введите текст сообщения.\n'
+            msg = msg + 'Тире или 0 - использовать стандартное сообщение.\n'
+            msg = msg + 'Время в формате 21:55 - использовать стандартное с уведомлением о времени прибытия.\n'
+            msg = msg + 'Кроме того в тексте можно использовать следующие коды:\n'
+            msg = msg + '[username] - подстановка имени пользователя для которого настраивается автоответчик.\n'
+            msg = msg + '[statistics] - статистика активности и прогноз времени прибытия.\n'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
         elif self.setup_step == 8:
             msg = '**Настройка завершена!!!**\n\n'
@@ -205,15 +213,19 @@ class AutoAnswers:
             await self.next_setup_step()
         elif self.setup_step == 5:
             message = message.lower()
-            self.aa_options['show_bot'] = message in ['да', 'yes', '1']
+            self.aa_options['show_bot'] = message in self.yes_variants
             await self.next_setup_step()
         elif self.setup_step == 6:
             message = message.lower()
-            self.aa_options['allow_bot_chat'] = message in ['да', 'yes', '1']
+            self.aa_options['allow_bot_chat'] = message in self.yes_variants
             await self.next_setup_step()
         elif self.setup_step == 7:
-            if not message or (message == '-') or (message == '0'):
-                message = self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message']
+            if not message or (message in self.no_variants):
+                message = str(self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message'])
+            elif re.match(r"[0-9]{1,2}:[0-9]{1,2}", message):
+                d_msg = message
+                message = str(self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message_time'])
+                message = message.replace('[datetime]', d_msg)
             self.aa_options['message'] = message
             await self.next_setup_step()
         elif self.setup_step == 100:
@@ -254,10 +266,15 @@ class AutoAnswers:
     async def send_message(self, to_id):
         message_text = self.aa_options['message']
         message = message_text.replace('[username]', self.aa_user_name)
+
+        if message.find('[statistics]') >= 0:
+            stats_str = await self.tg_bot_controller.tg_client.status_controller.get_user_aa_statistics_text(self.tg_bot_controller.tg_client.me_user_id)
+            message = message.replace('[statistics]', '\n' + stats_str)
+
         if self.aa_options['show_bot']:
-            message = self.tg_bot_controller.text_to_bot_text(message, "dialog")
+            message = self.tg_bot_controller.text_to_bot_text(message, to_id, "dialog")
         else:
-            message = self.tg_bot_controller.text_to_bot_text(message, "bot")
+            message = self.tg_bot_controller.text_to_bot_text(message, to_id, "bot")
         to_username = await self.tg_bot_controller.tg_client.get_entity_name(to_id, 'User')
         msg_log = StatusController.datetime_to_str(datetime.now()) + ' Sending AA message to user "'+to_username+'"'
         msg_log = msg_log + '\n' + '<<< ' + message
@@ -355,7 +372,7 @@ class AutoAnswers:
                         self.aa_not_for_users.append(check_id)
                         await self.send_message(check_id)
                         if self.aa_options['allow_bot_chat']:
-                            self.tg_bot_controller.init_chat_for_user(check_id, self.aa_options['show_bot'])
+                            await self.tg_bot_controller.init_chat_for_user(check_id, check_id, None, self.aa_options['show_bot'])
         except:
             traceback.print_exc()
 

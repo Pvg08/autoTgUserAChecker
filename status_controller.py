@@ -402,6 +402,15 @@ class StatusController:
 
         return ''
 
+    async def get_user_aa_statistics_text(self, user_id, with_uname=True):
+        if with_uname:
+            user_name = await self.tg_client.get_entity_name(user_id, 'User')
+            stat_res = 'Пользователь ' + user_name
+        else:
+            stat_res = 'Пользователь'
+        stat_res = stat_res + ' в среднем отвечает в течении 15 мин.'
+        return stat_res
+
     @staticmethod
     def get_summary_time_in_interval(diaps, d_from, d_to):
         sum_time = 0
