@@ -23,12 +23,12 @@ class InteractiveTelegramBot(TelegramClient):
         if data.message.from_id == self.bot_entity.id:
             return
         if data.message.from_id and (data.message.from_id != self.tg_client.me_user_id):
-            msg_entity_name = await self.tg_client.get_entity_name(data.message.from_id, 'User')
+            msg_entity_name = await self.tg_client.get_entity_name(data.message.from_id, 'Bot')
             if msg_entity_name:
                 print(StatusController.datetime_to_str(datetime.now()) + ' Message to my bot from "' + msg_entity_name + '"')
                 print('<<< ' + str(data.message.message))
                 t_date = StatusController.tg_datetime_to_local_datetime(data.message.date)
-                self.tg_client.add_message_to_db(self.bot_entity.id, 'User', data.message.from_id, self.bot_entity.id, data.message.id, data.message.message, t_date, 0)
+                self.tg_client.add_message_to_db(self.bot_entity.id, 'Bot', data.message.from_id, self.bot_entity.id, data.message.id, data.message.message, t_date, 0)
         bot_chat = await event.get_input_chat()
         if self.tg_client.aa_controller.is_setup_mode:
             if await self.tg_client.aa_controller.on_bot_message(data.message.message, data.message.from_id, bot_chat):

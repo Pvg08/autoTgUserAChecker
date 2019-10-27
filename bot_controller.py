@@ -459,6 +459,7 @@ class BotController:
         return "["+user_name+"](tg://user?id="+str(user_id)+")"
 
     async def cmd_user_info(self, to_id, params):
+        from_id = to_id
         for_id = await self.get_from_id_param(to_id, params)
         entity = await self.tg_client.get_entity(for_id)
         res = []
@@ -506,6 +507,11 @@ class BotController:
             res.append('Сообщения не отслеживается')
 
         stat_msg = await self.tg_client.status_controller.get_user_aa_statistics_text(entity.id, False)
+        if stat_msg:
+            res.append('')
+            res.append(stat_msg)
+
+        stat_msg = await self.tg_client.status_controller.get_stat_user_messages(entity.id, from_id)
         if stat_msg:
             res.append('')
             res.append(stat_msg)

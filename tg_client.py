@@ -184,12 +184,21 @@ class InteractiveTelegramClient(TelegramClient):
             );
         """)
         c.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS "e_id_msg_id_ver" ON "messages" (
+                "entity_id" ASC,
+                "message_id" ASC,
+                "version" ASC
+            );
+        """)
+        c.execute("""
             CREATE TABLE IF NOT EXISTS "entities" (
                 "entity_id" INTEGER NOT NULL,
                 "entity_type" TEXT NULL,
                 "entity_name" TEXT NULL,
                 "entity_phone" TEXT NULL,
                 "taken_at" DATETIME NOT NULL,
+                "to_answer_sec" REAL,
+                "from_answer_sec" REAL,
                 "version" INTEGER NOT NULL
             );
         """)
@@ -205,7 +214,7 @@ class InteractiveTelegramClient(TelegramClient):
             entities_v = []
             for row in rows:
                 entity = None
-                if row['entity_type'] == 'User':
+                if row['entity_type'] in ['User', 'Bot']:
                     entity = PeerUser(int(row['entity_id']))
                 elif row['entity_type'] == 'Chat':
                     entity = PeerChat(int(row['entity_id']))
@@ -336,6 +345,8 @@ class InteractiveTelegramClient(TelegramClient):
                     entity = await self.get_entity(PeerUser(entity_id))
                     if type(entity) != User:
                         raise ValueError(str_entity_id + ' is not user')
+                    if entity.bot and (entity_type == 'User'):
+                        entity_type = 'Bot'
                     self.user_logins[str_entity_id] = self.get_user_name_text(entity)
                     self.add_entity_db_name(entity_id, entity_type, self.user_logins[str_entity_id])
                     if with_additional_text:
@@ -504,9 +515,13 @@ class InteractiveTelegramClient(TelegramClient):
                                 entity_id = data['user_id']
                             e_type = 'User'
                             try:
+                                entity = await self.get_entity(PeerUser(entity_id))
                                 messages = await self.get_messages(PeerUser(entity_id), ids=[message_id])
                             except:
                                 traceback.print_exc()
+                                entity = None
+                            if entity and entity.bot:
+                                e_type = 'Bot'
                             if messages and (len(messages) > 0) and messages[0]:
                                 data_message = messages[0].to_dict()
                             else:
@@ -558,6 +573,8 @@ class InteractiveTelegramClient(TelegramClient):
                     if 'to_id' in data_message:
                         if data_message['to_id']['_'] == 'PeerUser':
                             e_type = 'User'
+                            if ('bot' in data_message['to_id']) and data_message['to_id']['bot']:
+                                e_type = 'Bot'
                             to_id = data_message['to_id']['user_id']
                             if to_id != self.me_user_id:
                                 entity_id = to_id
@@ -578,7 +595,7 @@ class InteractiveTelegramClient(TelegramClient):
                     if ('from_id' in data_message) and data_message['from_id']:
                         from_name = await self.get_entity_name(data_message['from_id'])
                         from_id = data_message['from_id']
-                        if (e_type == 'User') and (from_id != self.me_user_id):
+                        if (e_type in ['User', 'Bot']) and (from_id != self.me_user_id):
                             entity_id = data_message['from_id']
 
                     message = self.get_dict_message_text(data_message)
@@ -596,6 +613,7 @@ class InteractiveTelegramClient(TelegramClient):
                         a_type = message_type
                     a_type = a_type + ' ' + str(message_id)
                     if not e_type:
+                        print('!!! NOT ETYPE')
                         if data['_'] in ['UpdateEditChannelMessage', 'UpdateNewChannelMessage']:
                             e_type = 'Channel'
                         elif data['_'] in ['UpdateShortChatMessage']:
@@ -622,6 +640,7 @@ class InteractiveTelegramClient(TelegramClient):
                                 (int(self.config['messages']['write_messages_to_database']) == 1) and
                                 (
                                     ((e_type == 'User') and (int(self.config['messages']['event_include_users']) == 1)) or
+                                    ((e_type == 'Bot') and (int(self.config['messages']['event_include_bots']) == 1)) or
                                     ((e_type == 'Chat') and (int(self.config['messages']['event_include_chats']) == 1)) or
                                     ((e_type == 'Megagroup') and (int(self.config['messages']['event_include_megagroups']) == 1)) or
                                     ((e_type == 'Channel') and (int(self.config['messages']['event_include_channels']) == 1))
@@ -647,6 +666,7 @@ class InteractiveTelegramClient(TelegramClient):
                     if message and not reply_skip_message:
                         if (
                                 ((e_type == 'User') and (int(self.config['messages']['display_user_messages']) == 1)) or
+                                ((e_type == 'Bot') and (int(self.config['messages']['display_bot_messages']) == 1)) or
                                 ((e_type == 'Chat') and (int(self.config['messages']['display_chat_messages']) == 1)) or
                                 ((e_type == 'Megagroup') and (int(self.config['messages']['display_megagroup_messages']) == 1)) or
                                 ((e_type == 'Channel') and (int(self.config['messages']['display_channel_messages']) == 1))
@@ -671,7 +691,7 @@ class InteractiveTelegramClient(TelegramClient):
                         playsound(self.config['notify_sounds']['notify_when_editing_sound'], False)
 
                     is_bot_message = False
-                    if is_message_new and (e_type in ['User', 'Bot']) and (
+                    if is_message_new and (e_type in ['User']) and (
                             ((to_id == self.me_user_id) and (from_id == self.selected_user_activity)) or
                             ((from_id == self.me_user_id) and (to_id == self.selected_user_activity)) or
                             self.bot_controller.is_active_for_user(entity_id, False)
@@ -777,6 +797,8 @@ class InteractiveTelegramClient(TelegramClient):
         if ('to_id' in data_message) and data_message['to_id']:
             if data_message['to_id']['_'] == 'PeerUser':
                 source_type = 'User'
+                if ('bot' in data_message['to_id']) and data_message['to_id']['bot']:
+                    source_type = 'Bot'
                 to_id = data_message['to_id']['user_id']
                 to_name = await self.get_entity_name(to_id, source_type)
             elif data_message['to_id']['_'] == 'PeerChannel':
@@ -887,6 +909,51 @@ class InteractiveTelegramClient(TelegramClient):
         except:
             traceback.print_exc()
 
+    async def add_entity_dialog_messages_to_db(self, entity, limit, e_id=None, e_type=None):
+        if (not e_id) or (not e_type):
+            if type(entity) == User:
+                e_type = 'User'
+                e_id = entity.id
+                if entity.bot:
+                    e_type = 'Bot'
+                self.add_entity_db_name(e_id, e_type, self.get_user_name_text(entity), entity.phone, False)
+            elif type(entity) == Chat:
+                e_type = 'Chat'
+                e_id = entity.id
+                self.chat_names[str(e_id)] = get_display_name(entity)
+                self.add_entity_db_name(e_id, e_type, get_display_name(entity), None, False)
+            elif type(entity) == Channel:
+                e_type = 'Channel'
+                if entity.megagroup:
+                    e_type = 'Megagroup'
+                e_id = entity.id
+                self.channel_megagroups[str(e_id)] = entity.megagroup
+                self.channel_names[str(e_id)] = get_display_name(entity)
+                self.add_entity_db_name(e_id, e_type, get_display_name(entity), None, entity.megagroup)
+            else:
+                return
+
+        messages = await self.get_messages(entity, limit=limit)
+        for message_i in messages:
+            t_date = StatusController.tg_datetime_to_local_datetime(message_i.date)
+            from_id = None
+            to_id = None
+            data_message = message_i.to_dict()
+            if 'to_id' in data_message:
+                if data_message['to_id']['_'] == 'PeerUser':
+                    to_id = data_message['to_id']['user_id']
+                elif data_message['to_id']['_'] == 'PeerChannel':
+                    to_id = data_message['to_id']['channel_id']
+                    from_id = to_id
+                elif data_message['to_id']['_'] == 'PeerChat':
+                    to_id = data_message['to_id']['chat_id']
+
+            if ('from_id' in data_message) and data_message['from_id']:
+                from_id = data_message['from_id']
+
+            message_text = self.get_dict_message_text(data_message)
+            self.add_message_to_db(e_id, e_type, from_id, to_id, message_i.id, message_text, t_date, 0)
+
     async def run(self):
         me_entity = await self.get_entity("me")
         self.me_user_id = me_entity.id
@@ -916,6 +983,8 @@ class InteractiveTelegramClient(TelegramClient):
                 if type(t_dialog.entity) == User:
                     e_type = 'User'
                     e_id = t_dialog.entity.id
+                    if t_dialog.entity.bot:
+                        e_type = 'Bot'
                     self.add_entity_db_name(e_id, e_type, self.get_user_name_text(t_dialog.entity), t_dialog.entity.phone, False)
                 elif type(t_dialog.entity) == Chat:
                     e_type = 'Chat'
@@ -940,6 +1009,8 @@ class InteractiveTelegramClient(TelegramClient):
                 t_dial_entity_ids.append(e_id)
 
                 show_e_types = ['User']
+                if int(self.config['messages']['initial_dialogs_include_bots']) == 1:
+                    show_e_types.append('Bot')
                 if int(self.config['messages']['initial_dialogs_include_chats']) == 1:
                     show_e_types.append('Chat')
                 if int(self.config['messages']['initial_dialogs_include_channels']) == 1:
@@ -953,32 +1024,14 @@ class InteractiveTelegramClient(TelegramClient):
                             (initial_limit > 0) and
                             (
                                 ((e_type == 'User') and (int(self.config['messages']['initial_include_users']) == 1)) or
+                                ((e_type == 'Bot') and (int(self.config['messages']['initial_include_bots']) == 1)) or
                                 ((e_type == 'Chat') and (int(self.config['messages']['initial_include_chats']) == 1)) or
                                 ((e_type == 'Megagroup') and (int(self.config['messages']['initial_include_megagroups']) == 1)) or
                                 ((e_type == 'Channel') and (int(self.config['messages']['initial_include_channels']) == 1))
                             )
                     ):
                         print("Getting messages for dialog with " + get_display_name(t_dialog.entity))
-                        messages = await self.get_messages(t_dialog.entity, limit=initial_limit)
-                        for message_i in messages:
-                            t_date = StatusController.tg_datetime_to_local_datetime(message_i.date)
-                            from_id = None
-                            to_id = None
-                            data_message = message_i.to_dict()
-                            if 'to_id' in data_message:
-                                if data_message['to_id']['_'] == 'PeerUser':
-                                    to_id = data_message['to_id']['user_id']
-                                elif data_message['to_id']['_'] == 'PeerChannel':
-                                    to_id = data_message['to_id']['channel_id']
-                                    from_id = to_id
-                                elif data_message['to_id']['_'] == 'PeerChat':
-                                    to_id = data_message['to_id']['chat_id']
-
-                            if ('from_id' in data_message) and data_message['from_id']:
-                                from_id = data_message['from_id']
-
-                            message_text = self.get_dict_message_text(data_message)
-                            self.add_message_to_db(e_id, e_type, from_id, to_id, message_i.id, message_text, t_date, 0)
+                        await self.add_entity_dialog_messages_to_db(t_dialog.entity, initial_limit)
                         await asyncio.sleep(float(self.config['messages']['initial_messages_delay']))
                 if (e_type in show_e_types) and get_display_name(t_dialog.entity):
                     dialogs.append(t_dialog)
@@ -1045,6 +1098,7 @@ class InteractiveTelegramClient(TelegramClient):
             print('  !Q:  Deselect entity and exits.')
             print('  !D:  Get entity data (for debug purpose).')
             if type(entity) == User:
+                print('  !M:  add all messages to database (may take a long time)')
                 print('  !A:  Append to AA & run AA if not set. optional param - message for AA')
                 print('  !L:  Logs only selected user online activity to file (until !L).')
                 print('  !LD: Prints log activity - intervals.')
@@ -1085,6 +1139,10 @@ class InteractiveTelegramClient(TelegramClient):
                     p_types = {'!LD': "diap", '!LE': "excel", '!LP': "plot"}
                     await self.status_controller.print_user_activity(entity.id, get_display_name(entity), p_types[msg],
                                                                      param1, (param2 == '1'))
+                elif (msg == '!M') and (type(entity) == User):
+                    print('Begin message adding...')
+                    await self.add_entity_dialog_messages_to_db(entity, None)
+                    print('Message adding complete!')
                 elif (msg == '!A') and (type(entity) == User):
                     await self.aa_controller.force_add_user(entity.id, params_text)
                 elif (msg == '!L') and (type(entity) == User):
