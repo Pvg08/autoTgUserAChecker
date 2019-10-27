@@ -3,6 +3,7 @@ from datetime import datetime
 from telethon import TelegramClient, events
 from telethon.tl.types import UpdateNewMessage
 
+from bot_action_branch import BotActionBranch
 from status_controller import StatusController
 
 
@@ -12,7 +13,11 @@ class InteractiveTelegramBot(TelegramClient):
         print('Initialization of bot')
         self.tg_client = parent_client
         self.bot_entity = None
+        self.branches = []
         super().__init__(session_file, api_id, api_hash, connection=cl_conn, proxy=proxy, sequential_updates=True)
+
+    def add_branch(self, branch:BotActionBranch):
+        self.branches.append(branch)
 
     async def message_handler(self, event):
         if type(event.original_update) != UpdateNewMessage:
@@ -30,9 +35,12 @@ class InteractiveTelegramBot(TelegramClient):
                 t_date = StatusController.tg_datetime_to_local_datetime(data.message.date)
                 self.tg_client.add_message_to_db(self.bot_entity.id, 'Bot', data.message.from_id, self.bot_entity.id, data.message.id, data.message.message, t_date, 0)
         bot_chat = await event.get_input_chat()
-        if self.tg_client.aa_controller.is_setup_mode:
-            if await self.tg_client.aa_controller.on_bot_message(data.message.message, data.message.from_id, bot_chat):
-                return
+
+        for branch in self.branches:
+            if branch.is_setup_mode:
+                if await branch.on_bot_message(data.message.message, data.message.from_id, bot_chat):
+                    return
+
         await self.tg_client.bot_controller.bot_command(data.message.message, data.message.from_id, self.bot_entity.id, 'Bot', bot_chat)
 
     def do_start(self):

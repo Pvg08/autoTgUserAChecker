@@ -556,35 +556,36 @@ class StatusController:
                         for row in rows:
                             if not row['message']:
                                 row['message'] = ''
-                            if int(row['version']) == 1:
-                                msg_len = len(row['message'])
-                                if int(row['from_id']) == self.tg_client.me_user_id:
-                                    msg_len_me = msg_len_me + msg_len
-                                    msg_me_cnt = msg_me_cnt + 1
-                                    if msg_len > msg_me_max_len:
-                                        msg_me_max_len = msg_len
-                                else:
-                                    msg_len_another = msg_len_another + msg_len
-                                    msg_another_cnt = msg_another_cnt + 1
-                                    if msg_len > msg_another_max_len:
-                                        msg_another_max_len = msg_len
-                                msg_date = self.datetime_from_str(row['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                                if (len(active_dialog) == 0) or ((msg_date - last_date).total_seconds() > max_dialog_interval):
-                                    if len(active_dialog) > 0:
-                                        dialogues.append(active_dialog)
-                                        active_dialog = []
-                                active_dialog.append(row)
-                                last_date = msg_date
-                            else:
-                                if int(row['from_id']) == self.tg_client.me_user_id:
-                                    me_edits = me_edits + 1
-                                else:
-                                    another_edits = another_edits + 1
                             if int(row['removed']) == 1:
                                 if int(row['from_id']) == self.tg_client.me_user_id:
                                     me_deletes = me_deletes + 1
                                 else:
                                     another_deletes = another_deletes + 1
+                            else:
+                                if int(row['version']) == 1:
+                                    msg_len = len(row['message'])
+                                    if int(row['from_id']) == self.tg_client.me_user_id:
+                                        msg_len_me = msg_len_me + msg_len
+                                        msg_me_cnt = msg_me_cnt + 1
+                                        if msg_len > msg_me_max_len:
+                                            msg_me_max_len = msg_len
+                                    else:
+                                        msg_len_another = msg_len_another + msg_len
+                                        msg_another_cnt = msg_another_cnt + 1
+                                        if msg_len > msg_another_max_len:
+                                            msg_another_max_len = msg_len
+                                    msg_date = self.datetime_from_str(row['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                                    if (len(active_dialog) == 0) or ((msg_date - last_date).total_seconds() > max_dialog_interval):
+                                        if len(active_dialog) > 0:
+                                            dialogues.append(active_dialog)
+                                            active_dialog = []
+                                    active_dialog.append(row)
+                                    last_date = msg_date
+                                else:
+                                    if int(row['from_id']) == self.tg_client.me_user_id:
+                                        me_edits = me_edits + 1
+                                    else:
+                                        another_edits = another_edits + 1
 
                         if len(active_dialog) > 0:
                             dialogues.append(active_dialog)
@@ -738,4 +739,3 @@ class StatusController:
             self.db_conn.commit()
         except sqlite3.IntegrityError:
             print('DB error!')
-

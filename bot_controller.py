@@ -7,12 +7,15 @@ import apiai
 import pyowm
 from telethon.tl.types import PeerUser, User, UserStatusOnline, UserStatusOffline
 
+from bot_action_branch import BotActionBranch
+from auto_answers import AutoAnswers
 from status_controller import StatusController
 
 
-class BotController:
+class BotController(BotActionBranch):
 
     def __init__(self, tg_client):
+        super().__init__(self)
         self.tg_client = tg_client
         self.bot_answer_format_text = str(self.tg_client.config['chat_bot']['bot_answer_format'])
         self.users = {}
@@ -50,30 +53,10 @@ class BotController:
                 'desc': 'состояние подключенных устройств и управление ими.'
             },
             '/auto': {
-                'cmd': self.cmd_auto_answer,
+                'cmd': None,
                 'places': ['bot'],
                 'rights_level': 3,
-                'desc': 'автоответчик - начальная настройка или изменение настроек.'
-            },
-            '/auto_back': {
-                'places': [],
-                'rights_level': 10,
-                'desc': None
-            },
-            '/auto_off': {
-                'places': [],
-                'rights_level': 10,
-                'desc': None
-            },
-            '/auto_restart': {
-                'places': [],
-                'rights_level': 10,
-                'desc': None
-            },
-            '/auto_reset_users': {
-                'places': [],
-                'rights_level': 10,
-                'desc': None
+                'desc': 'автоответчик - начальная настройка или изменение настроек.',
             },
             '/user_info': {
                 'cmd': self.cmd_user_info,
@@ -130,6 +113,11 @@ class BotController:
                           'Без параметра она применяется к тебе.',
             '/plot_today': None
         }
+        self.on_init_finish()
+
+    def init_branches(self):
+        self.tg_client.aa_controller = AutoAnswers(self)
+        self.commands['/auto']['cmd'] = self.tg_client.aa_controller
 
     def stop_chat_with_all_users(self):
         for k in self.users.keys():
@@ -200,12 +188,6 @@ class BotController:
                 return self.users[str(entity_id)]['is_bot_dialog'] == check_is_bot_dialog
             return True
         return False
-
-    @staticmethod
-    def adapt_command(text):
-        text = re.sub(r'[^\w\s!\\?/]', ' ', text)
-        text = re.sub(' +', ' ', text)
-        return text.strip().lower()
 
     def chatbot_message_response(self, message_text, user_id):
         try:
@@ -339,24 +321,6 @@ class BotController:
         else:
             return text
 
-    async def send_message_to_user(self, user_id, message):
-        if not self.is_active_for_user(user_id):
-            return
-        str_user_id = str(user_id)
-        message_client = self.users[str_user_id]['message_client']
-        dialog_entity = self.users[str_user_id]['dialog_entity']
-        message = self.text_to_bot_text(message, user_id)
-        await message_client.send_message(dialog_entity, message)
-
-    async def send_file_to_user(self, user_id, file_name, caption, force_document=False):
-        if not self.is_active_for_user(user_id):
-            return
-        str_user_id = str(user_id)
-        message_client = self.users[str_user_id]['message_client']
-        dialog_entity = self.users[str_user_id]['dialog_entity']
-        caption = self.text_to_bot_text(caption, user_id)
-        await message_client.send_file(dialog_entity, file_name, caption=caption, force_document=force_document)
-
     #                from_id    from_entity_id    from_entity_type    bot_chat
     # USER -> ME     user_id    user_id           User                None
     # ME -> USER     me_id      user_id           User                None
@@ -381,25 +345,7 @@ class BotController:
             if (from_entity_id != from_id) and not self.is_active_for_user(from_entity_id, False):
                 await self.init_chat_for_user(from_entity_id)
 
-        command_parts = command_text.split(' ')
-        if (len(command_parts) > 0) and command_parts[0] and (command_parts[0] in self.commands):
-            command_code = command_parts[0]
-            curr_place = self.get_user_place_code(from_id)
-            curr_rights = await self.get_user_rights_level(from_id)
-            if (
-                    (curr_place in self.commands[command_code]['places']) and
-                    (curr_rights >= self.commands[command_code]['rights_level']) and
-                    (('condition' not in self.commands[command_code]) or self.commands[command_code]['condition']()) and
-                    ('cmd' in self.commands[command_code]) and
-                    self.commands[command_code]['cmd']
-            ):
-                try:
-                    await self.commands[command_code]['cmd'](from_id, command_parts[1:])
-                except:
-                    traceback.print_exc()
-                    await self.send_message_to_user(from_id, 'Какая-то ошибка!')
-            else:
-                await self.send_message_to_user(from_id, 'Невозможно выполнить команду!')
+        if await self.run_command_text(command_text, from_id):
             return
 
         response_text = self.chatbot_message_response(command_text, chatbot_session_user_id)
@@ -410,29 +356,9 @@ class BotController:
 
     async def cmd_help(self, from_id, params):
         result_str = []
-        curr_place = self.get_user_place_code(from_id)
-        curr_rights = await self.get_user_rights_level(from_id)
         if params == 'Start':
             result_str.append('Привет, я - чат-бот (и не только)')
-        commands_results = []
-        commands_count = 0
-        for k in self.commands.keys():
-            if (
-                    self.commands[k]['desc'] and
-                    (curr_place in self.commands[k]['places']) and
-                    (curr_rights >= self.commands[k]['rights_level']) and
-                    (('condition' not in self.commands[k]) or self.commands[k]['condition']())
-            ):
-                if k in self.command_groups:
-                    commands_results.append('')
-                    if self.command_groups[k]:
-                        commands_results.append(self.command_groups[k])
-                        commands_results.append('')
-                commands_count = commands_count + 1
-                commands_results.append(''+ k + ' - ' + str(self.commands[k]['desc']))
-        result_str.append('\nСписок доступных для тебя моих команд ('+str(commands_count)+'/'+str(self.max_commands)+'):\n')
-        result_str = result_str + commands_results
-        result_str.append('')
+        result_str = result_str + (await self.get_commands_description_list(from_id, 'Список доступных для тебя моих команд'))
         result_str = ("\n".join(result_str))
         await self.send_message_to_user(from_id, result_str)
 
@@ -587,6 +513,3 @@ class BotController:
     async def cmd_devices(self, from_id, params):
         await self.send_message_to_user(from_id, 'Не хватает прав на выполнение команды!')
 
-    async def cmd_auto_answer(self, from_id, params):
-        if self.is_active_for_user(from_id):
-            await self.tg_client.aa_controller.begin_setup(from_id, self.users[str(from_id)]['message_client'], self.users[str(from_id)]['dialog_entity'])

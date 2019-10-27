@@ -23,7 +23,6 @@ from telethon.tl.types import UpdateUserStatus, UserStatusOnline, UserStatusOffl
     UpdateNotifySettings, UpdateChannelPinnedMessage, InputPeerUser
 from telethon.utils import get_display_name, is_list_like
 
-from auto_answers import AutoAnswers
 from bot_controller import BotController
 from periodic import Periodic
 from status_controller import StatusController
@@ -78,24 +77,6 @@ class InteractiveTelegramClient(TelegramClient):
         else:
             proxy = None
 
-        self.config = config
-        self.tmp_phone = phone
-        self.log_user_activity = False
-        self.selected_user_activity = False
-        self.user_logins = {}
-        self.channel_names = {}
-        self.chat_names = {}
-        self.channel_megagroups = {}
-        self.db_conn = self.get_db('client_data.db')
-        self.status_controller = StatusController(self)
-        self.bot_controller = BotController(self)
-        self.aa_controller = AutoAnswers(self.bot_controller)
-        self.last_update = None
-        self.dialogs_init_complete = False
-        self.me_user_id = None
-        self.me_user_name = None
-        self.me_last_activity = datetime.now()
-
         print('Initializing Telegram client...')
 
         if is_mtproxy:
@@ -131,11 +112,31 @@ class InteractiveTelegramClient(TelegramClient):
                                  'Please enter your password: ')
                     self_user = self.client_loop.run_until_complete(self.sign_in(password=pw))
 
+        self.config = config
+
         if str(config['tg_bot']['session_fname']) and str(config['tg_bot']['token']):
             self.tg_bot = InteractiveTelegramBot(str(config['tg_bot']['session_fname']), api_id, api_hash, cl_conn, proxy, self)
             self.tg_bot.do_start()
         else:
             self.tg_bot = None
+
+        self.tmp_phone = phone
+        self.log_user_activity = False
+        self.selected_user_activity = False
+        self.user_logins = {}
+        self.channel_names = {}
+        self.chat_names = {}
+        self.channel_megagroups = {}
+        self.db_conn = self.get_db('client_data.db')
+        self.status_controller = StatusController(self)
+        self.bot_controller = BotController(self)
+        self.aa_controller = None
+        self.bot_controller.init_branches()
+        self.last_update = None
+        self.dialogs_init_complete = False
+        self.me_user_id = None
+        self.me_user_name = None
+        self.me_last_activity = datetime.now()
 
     def sprint(self, string, *args, **kwargs):
         try:

@@ -1,21 +1,20 @@
 import traceback
+import re
 from datetime import datetime, timedelta
 
-import re
-from telethon.tl import functions
 from telethon.tl.functions.messages import GetDialogsRequest
 from telethon.tl.types import User, PeerUser
 from telethon.tl.types.messages import DialogsSlice
 
-from bot_controller import BotController
+from bot_action_branch import BotActionBranch
 from status_controller import StatusController
 
 
-class AutoAnswers:
+class AutoAnswers(BotActionBranch):
 
-    def __init__(self, tg_bot_controller:BotController):
-        self.tg_bot_controller = tg_bot_controller
-        self.is_setup_mode = False
+    def __init__(self, tg_bot_controller):
+        super().__init__(tg_bot_controller)
+
         self.setup_step = 0
         self.setup_user_id = None
         self.active_entity_client = None
@@ -38,8 +37,51 @@ class AutoAnswers:
             'message': ''
         }
 
+        self.max_commands = 5
+        self.commands = {
+            '/auto_off': {
+                'cmd': self.cmd_off,
+                'condition': self.is_active,
+                'places': ['bot'],
+                'rights_level': 3,
+                'desc': 'отключить автоответчик'
+            },
+            '/auto_restart': {
+                'cmd': self.cmd_restart,
+                'condition': self.is_active,
+                'places': ['bot'],
+                'rights_level': 3,
+                'desc': 'начать настройку повторно'
+            },
+            '/auto_set_time': {
+                'cmd': self.cmd_auto_set_time,
+                'condition': self.is_active,
+                'places': ['bot'],
+                'rights_level': 3,
+                'desc': 'указать дату/время прибытия'
+            },
+            '/auto_reset_users': {
+                'cmd': self.cmd_reset_users,
+                'condition': self.has_users_setup,
+                'places': ['bot'],
+                'rights_level': 3,
+                'desc': 'сбросить флаги ответа пользователям'
+            },
+            '/auto_back': {
+                'cmd': self.cmd_back,
+                'condition': self.is_active,
+                'places': ['bot'],
+                'rights_level': 3,
+                'desc': 'вернуться'
+            },
+        }
+        self.on_init_finish()
+
     def is_active(self):
         return self.aa_options['is_set']
+
+    def has_users_setup(self):
+        return self.aa_options['is_set'] and (len(self.aa_for_users) > 0)
 
     def reset_aa(self):
         self.aa_options['is_set'] = False
@@ -48,6 +90,10 @@ class AutoAnswers:
         self.setup_user_id = None
         self.aa_for_users = {}
         self.aa_not_for_users = []
+
+    async def run_main_setup(self, from_id, params, message_client, dialog_entity):
+        if self.tg_bot_controller.is_active_for_user(from_id):
+            await self.begin_setup(from_id, message_client, dialog_entity)
 
     async def begin_setup(self, from_id, active_entity_client, dialog_entity):
         if not self.aa_user_name:
@@ -144,12 +190,7 @@ class AutoAnswers:
             else:
                 msg = msg + 'Отсутствуют'
             msg = msg + '\n\n'
-            msg = msg + 'выберите дальнейшее действие:\n'
-            msg = msg + '/auto_off - отключить автоответчик\n'
-            msg = msg + '/auto_restart - начать настройку повторно\n'
-            msg = msg + '/auto_set_time - указать дату/время прибытия\n'
-            msg = msg + '/auto_reset_users - сбросить флаги ответа пользователям\n'
-            msg = msg + '/auto_back - вернуться\n'
+            msg = msg + "\n".join(await self.get_commands_description_list(self.setup_user_id))
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
         elif self.setup_step == 200:
             msg = '**Настройка даты/времени прибытия**\n\n'
@@ -230,30 +271,7 @@ class AutoAnswers:
             await self.next_setup_step()
         elif self.setup_step == 100:
             message = message.lower()
-            if message == '/auto_back':
-                await self.active_entity_client.send_message(self.active_dialog_entity, 'Понял. Оставляю включенным')
-                self.is_setup_mode = False
-                self.setup_step = 0
-                self.setup_user_id = None
-            elif message == '/auto_off':
-                self.aa_options['is_set'] = False
-                await self.active_entity_client.send_message(self.active_dialog_entity, 'Автоответчик отключен!')
-                self.reset_aa()
-            elif message == '/auto_restart':
-                self.aa_options['is_set'] = False
-                entity_client = self.active_entity_client
-                entity_dialog = self.active_dialog_entity
-                self.reset_aa()
-                await self.begin_setup(from_id, entity_client, entity_dialog)
-            elif message == '/auto_reset_users':
-                self.aa_for_users = {}
-                self.aa_not_for_users = []
-                await self.active_entity_client.send_message(self.active_dialog_entity, 'Выполнено!')
-                self.is_setup_mode = False
-                self.setup_step = 0
-                self.setup_user_id = None
-            elif message == '/auto_set_time':
-                await self.next_setup_step(200)
+            await self.run_command_text(message, self.setup_user_id)
         elif self.setup_step == 200:
             await self.active_entity_client.send_message(self.active_dialog_entity, 'Сообщение изменено!')
             self.aa_options['message'] = self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message_time']
@@ -415,3 +433,32 @@ class AutoAnswers:
         if message:
             self.aa_options['message'] = message
         await self.on_user_message_to_me(user_id, '---')
+
+    async def cmd_off(self, from_id, params):
+        self.aa_options['is_set'] = False
+        await self.active_entity_client.send_message(self.active_dialog_entity, 'Автоответчик отключен!')
+        self.reset_aa()
+
+    async def cmd_restart(self, from_id, params):
+        self.aa_options['is_set'] = False
+        entity_client = self.active_entity_client
+        entity_dialog = self.active_dialog_entity
+        self.reset_aa()
+        await self.begin_setup(from_id, entity_client, entity_dialog)
+
+    async def cmd_reset_users(self, from_id, params):
+        self.aa_for_users = {}
+        self.aa_not_for_users = []
+        await self.active_entity_client.send_message(self.active_dialog_entity, 'Выполнено!')
+        self.is_setup_mode = False
+        self.setup_step = 0
+        self.setup_user_id = None
+
+    async def cmd_back(self, from_id, params):
+        await self.active_entity_client.send_message(self.active_dialog_entity, 'Понял. Оставляю включенным')
+        self.is_setup_mode = False
+        self.setup_step = 0
+        self.setup_user_id = None
+
+    async def cmd_auto_set_time(self, from_id, params):
+        await self.next_setup_step(200)
