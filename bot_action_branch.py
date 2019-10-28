@@ -23,6 +23,9 @@ class BotActionBranch:
         if self != self.tg_bot_controller:
             self.tg_bot_controller.sub_commands_forbidden = self.tg_bot_controller.sub_commands_forbidden + list(self.commands.keys())
 
+    def register_branch(self, command, cmd_class):
+        self.commands[command]['cmd'] = cmd_class(self)
+
     async def get_commands_description_list(self, for_user_id, str_pick_text='выберите дальнейшее действие'):
         result_str = []
         curr_place = self.tg_bot_controller.get_user_place_code(for_user_id)
@@ -57,7 +60,11 @@ class BotActionBranch:
         return self.is_setup_mode
 
     async def run_main_setup(self, from_id, params, message_client, dialog_entity):
-        pass
+        if self.tg_bot_controller.is_active_for_user(from_id):
+            self.is_setup_mode = True
+            msg_text = "\n".join(await self.get_commands_description_list(from_id))
+            await message_client.send_message(dialog_entity, msg_text)
+            pass
 
     async def on_bot_message(self, message, from_id, dialog_entity):
         if not self.is_setup_mode:
@@ -114,3 +121,10 @@ class BotActionBranch:
         dialog_entity = self.tg_bot_controller.users[str_user_id]['dialog_entity']
         caption = self.tg_bot_controller.text_to_bot_text(caption, user_id)
         await message_client.send_file(dialog_entity, file_name, caption=caption, force_document=force_document)
+
+    async def return_to_main_branch(self, from_id):
+        self.is_setup_mode = False
+        await self.tg_bot_controller.cmd_help(from_id, [])
+
+    async def cmd_back(self, from_id, params):
+        await self.return_to_main_branch(from_id)

@@ -67,7 +67,7 @@ class AutoAnswers(BotActionBranch):
                 'rights_level': 3,
                 'desc': 'сбросить флаги ответа пользователям'
             },
-            '/auto_back': {
+            '/back': {
                 'cmd': self.cmd_back,
                 'condition': self.is_active,
                 'places': ['bot'],
@@ -93,27 +93,24 @@ class AutoAnswers(BotActionBranch):
 
     async def run_main_setup(self, from_id, params, message_client, dialog_entity):
         if self.tg_bot_controller.is_active_for_user(from_id):
-            await self.begin_setup(from_id, message_client, dialog_entity)
-
-    async def begin_setup(self, from_id, active_entity_client, dialog_entity):
-        if not self.aa_user_name:
-            self.aa_user_name = self.tg_bot_controller.tg_client.me_user_name
-        if (self.setup_user_id is not None) and self.active_entity_client and self.active_dialog_entity:
-            str_user_name = await self.tg_bot_controller.tg_client.get_entity_name(from_id, 'User')
-            await self.active_entity_client.send_message(self.active_dialog_entity, 'Процесс настройки прерван ' + str_user_name)
-            await active_entity_client.send_message(dialog_entity, 'Прервали настройку ' + str_user_name)
-        self.active_entity_client = active_entity_client
-        self.active_dialog_entity = dialog_entity
-        if self.aa_options['is_set']:
+            if not self.aa_user_name:
+                self.aa_user_name = self.tg_bot_controller.tg_client.me_user_name
+            if (self.setup_user_id is not None) and self.active_entity_client and self.active_dialog_entity:
+                str_user_name = await self.tg_bot_controller.tg_client.get_entity_name(from_id, 'User')
+                await self.active_entity_client.send_message(self.active_dialog_entity, 'Процесс настройки прерван ' + str_user_name)
+                await message_client.send_message(dialog_entity, 'Прервали настройку ' + str_user_name)
+            self.active_entity_client = message_client
+            self.active_dialog_entity = dialog_entity
+            if self.aa_options['is_set']:
+                self.is_setup_mode = True
+                self.setup_user_id = from_id
+                await self.next_setup_step(100)
+                return
+            await self.active_entity_client.send_message(dialog_entity, 'Настраиваем автоответчик для ' + self.aa_user_name)
+            self.reset_aa()
             self.is_setup_mode = True
             self.setup_user_id = from_id
-            await self.next_setup_step(100)
-            return
-        await self.active_entity_client.send_message(dialog_entity, 'Настраиваем автоответчик для ' + self.aa_user_name)
-        self.reset_aa()
-        self.is_setup_mode = True
-        self.setup_user_id = from_id
-        await self.next_setup_step()
+            await self.next_setup_step()
 
     async def next_setup_step(self, next_step=None):
         if next_step is not None:
@@ -168,6 +165,7 @@ class AutoAnswers(BotActionBranch):
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
             self.aa_options['notify_entity_client'] = self.active_entity_client
             self.aa_options['notify_entity_dialog'] = self.active_dialog_entity
+            await self.return_to_main_branch(self.setup_user_id)
             self.reset_aa()
             self.aa_options['is_set'] = True
         elif self.setup_step == 100:
@@ -279,6 +277,7 @@ class AutoAnswers(BotActionBranch):
             self.is_setup_mode = False
             self.setup_step = 0
             self.setup_user_id = None
+            await self.return_to_main_branch(from_id)
         return True
 
     async def send_message(self, to_id):
@@ -437,6 +436,7 @@ class AutoAnswers(BotActionBranch):
     async def cmd_off(self, from_id, params):
         self.aa_options['is_set'] = False
         await self.active_entity_client.send_message(self.active_dialog_entity, 'Автоответчик отключен!')
+        await self.return_to_main_branch(from_id)
         self.reset_aa()
 
     async def cmd_restart(self, from_id, params):
@@ -453,12 +453,14 @@ class AutoAnswers(BotActionBranch):
         self.is_setup_mode = False
         self.setup_step = 0
         self.setup_user_id = None
+        await self.return_to_main_branch(from_id)
 
     async def cmd_back(self, from_id, params):
         await self.active_entity_client.send_message(self.active_dialog_entity, 'Понял. Оставляю включенным')
-        self.is_setup_mode = False
         self.setup_step = 0
         self.setup_user_id = None
+        self.is_setup_mode = False
+        await self.return_to_main_branch(from_id)
 
     async def cmd_auto_set_time(self, from_id, params):
         await self.next_setup_step(200)

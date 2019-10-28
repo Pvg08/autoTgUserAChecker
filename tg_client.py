@@ -130,8 +130,8 @@ class InteractiveTelegramClient(TelegramClient):
         self.db_conn = self.get_db('client_data.db')
         self.status_controller = StatusController(self)
         self.bot_controller = BotController(self)
-        self.aa_controller = None
         self.bot_controller.init_branches()
+        self.aa_controller = self.bot_controller.commands['/auto']['cmd']
         self.last_update = None
         self.dialogs_init_complete = False
         self.me_user_id = None
@@ -321,9 +321,11 @@ class InteractiveTelegramClient(TelegramClient):
             entity_type = 'Megagroup'
 
         c = self.db_conn.cursor()
-        c.execute('INSERT INTO `entities` VALUES(?, ?, ?, ?, ?, ?)', [
+        c.execute('INSERT INTO `entities` VALUES(?, ?, ?, ?, ?, ?, ?, ?)', [
             str(entity_id), str(entity_type), entity_name, entity_phone,
             self.status_controller.datetime_to_str(datetime.now()),
+            None,
+            None,
             str(version)
         ])
         self.db_conn.commit()

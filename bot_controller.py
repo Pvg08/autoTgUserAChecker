@@ -9,6 +9,7 @@ from telethon.tl.types import PeerUser, User, UserStatusOnline, UserStatusOfflin
 
 from bot_action_branch import BotActionBranch
 from auto_answers import AutoAnswers
+from branch_insta import InstaBranch
 from status_controller import StatusController
 
 
@@ -26,7 +27,7 @@ class BotController(BotActionBranch):
             '3': 'pre selected',
             '4': 'only me'
         }
-        self.max_commands = 11
+        self.max_commands = 12
         self.commands = {
             '/start': {
                 'cmd': self.cmd_start,
@@ -51,6 +52,12 @@ class BotController(BotActionBranch):
                 'places': ['bot'],
                 'rights_level': 3,
                 'desc': 'состояние подключенных устройств и управление ими.'
+            },
+            '/insta_check': {
+                'cmd': None,
+                'places': ['bot'],
+                'rights_level': 1,
+                'desc': 'управление скриптом для работы с инстаграмом.'
             },
             '/auto': {
                 'cmd': None,
@@ -116,8 +123,8 @@ class BotController(BotActionBranch):
         self.on_init_finish()
 
     def init_branches(self):
-        self.tg_client.aa_controller = AutoAnswers(self)
-        self.commands['/auto']['cmd'] = self.tg_client.aa_controller
+        self.register_branch('/auto', AutoAnswers)
+        self.register_branch('/insta_check', InstaBranch)
 
     def stop_chat_with_all_users(self):
         for k in self.users.keys():

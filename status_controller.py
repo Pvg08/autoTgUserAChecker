@@ -438,6 +438,201 @@ class StatusController:
 
         return stat_res
 
+    async def get_me_dialog_statistics(self, user_id, date_from=None, title='за всё время', days_a=None):
+        if not days_a:
+            days_a = '?'
+        results = []
+        try:
+            user_entity = await self.tg_client.get_entity(PeerUser(user_id))
+        except:
+            user_entity = None
+        if user_entity and (type(user_entity) == User):
+            if not date_from:
+                res = self.db_conn.execute(
+                    """
+                        SELECT *
+                        FROM `messages`
+                        WHERE `entity_id` = ? OR `entity_id` = ?
+                        ORDER BY `taken_at` ASC
+                    """,
+                    [str(user_id), str(self.tg_client.me_user_id)]
+                )
+            else:
+                date_from = self.datetime_to_str(date_from, '%Y-%m-%d')
+                res = self.db_conn.execute(
+                    """
+                        SELECT *
+                        FROM `messages`
+                        WHERE (`entity_id` = ? OR `entity_id` = ?) AND (`taken_at` > ?)
+                        ORDER BY `taken_at` ASC
+                    """,
+                    [str(user_id), str(self.tg_client.me_user_id), date_from]
+                )
+            rows = list(res.fetchall())
+
+            me_name = await self.tg_client.get_entity_name(self.tg_client.me_user_id, 'User')
+            another_name = await self.tg_client.get_entity_name(user_id, 'User')
+            dialog_name = me_name + ' <-> ' + another_name
+
+            results.append('**Диалог '+dialog_name+' ('+title+')'+':**')
+            results.append('')
+            results.append('Сообщений диалога в БД: ' + str(len(rows)))
+            if len(rows) > 0:
+                date_start = self.datetime_from_str(rows[0]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                results.append('Самое раннее сообщение диалога в БД: ' + self.datetime_to_str(date_start))
+                if len(rows) > 1:
+                    date_end = self.datetime_from_str(rows[len(rows) - 1]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                    seconds_count = (date_end - date_start).total_seconds()
+                    days_count = seconds_count / (24 * 60 * 60)
+                    messages_count = len(rows)
+                    if not date_from:
+                        results.append('Длительность общения: {0:0.001f} суток'.format(days_count))
+                    results.append('Средняя частота сообщений: {0:0.001f} в сутки'.format(messages_count / days_count))
+
+                    max_dialog_interval = round((24 * 60 * 60) * 1.25)
+
+                    msg_len_me = 0
+                    msg_me_cnt = 0
+                    msg_me_max_len = 0
+                    msg_len_another = 0
+                    msg_another_cnt = 0
+                    msg_another_max_len = 0
+
+                    me_edits = 0
+                    another_edits = 0
+                    me_deletes = 0
+                    another_deletes = 0
+
+                    dialogues = []
+                    active_dialog = []
+                    last_date = date_start
+                    for row in rows:
+                        if not row['message']:
+                            row['message'] = ''
+                        if int(row['removed']) == 1:
+                            if int(row['from_id']) == self.tg_client.me_user_id:
+                                me_deletes = me_deletes + 1
+                            else:
+                                another_deletes = another_deletes + 1
+                        else:
+                            if int(row['version']) == 1:
+                                msg_len = len(row['message'])
+                                if int(row['from_id']) == self.tg_client.me_user_id:
+                                    msg_len_me = msg_len_me + msg_len
+                                    msg_me_cnt = msg_me_cnt + 1
+                                    if msg_len > msg_me_max_len:
+                                        msg_me_max_len = msg_len
+                                else:
+                                    msg_len_another = msg_len_another + msg_len
+                                    msg_another_cnt = msg_another_cnt + 1
+                                    if msg_len > msg_another_max_len:
+                                        msg_another_max_len = msg_len
+                                msg_date = self.datetime_from_str(row['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                                if (len(active_dialog) == 0) or ((msg_date - last_date).total_seconds() > max_dialog_interval):
+                                    if len(active_dialog) > 0:
+                                        dialogues.append(active_dialog)
+                                        active_dialog = []
+                                active_dialog.append(row)
+                                last_date = msg_date
+                            else:
+                                if int(row['from_id']) == self.tg_client.me_user_id:
+                                    me_edits = me_edits + 1
+                                else:
+                                    another_edits = another_edits + 1
+
+                    if len(active_dialog) > 0:
+                        dialogues.append(active_dialog)
+                        active_dialog = []
+
+                    answers_me = 0
+                    answers_wait_seconds_me = 0
+                    answers_another = 0
+                    answers_wait_seconds_another = 0
+
+                    longest_len = 0
+                    longest_dialog = None
+                    shortest_len = 0
+                    shortest_dialog = None
+
+                    for dial in dialogues:
+                        dial_len = len(dial)
+
+                        if (shortest_len == 0) or (dial_len < shortest_len):
+                            shortest_len = dial_len
+                            shortest_dialog = dial
+                        if (longest_len == 0) or (dial_len > longest_len):
+                            longest_len = dial_len
+                            longest_dialog = dial
+
+                        last_msg_id = None
+                        last_msg_date = None
+                        for dia in dial:
+                            msg_date = self.datetime_from_str(dia['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                            if last_msg_id and last_msg_id != int(dia['from_id']):
+                                seconds_between = (msg_date - last_msg_date).total_seconds()
+                                if seconds_between > (60 * 60 * 6) and ((last_msg_date.time().hour < 6) or (last_msg_date.time().hour >= 22)):
+                                    # somebody just sleep
+                                    continue
+                                if last_msg_id == self.tg_client.me_user_id:
+                                    answers_another = answers_another + 1
+                                    answers_wait_seconds_another = answers_wait_seconds_another + seconds_between
+                                else:
+                                    answers_me = answers_me + 1
+                                    answers_wait_seconds_me = answers_wait_seconds_me + seconds_between
+                            last_msg_date = msg_date
+                            last_msg_id = int(dia['from_id'])
+
+                    if answers_another > 0:
+                        answers_wait_seconds_another = answers_wait_seconds_another / answers_another
+                        another_answer_time = "{0:0.01f} мин.".format(answers_wait_seconds_another / 60)
+                    else:
+                        another_answer_time = '?'
+
+                    if answers_me > 0:
+                        answers_wait_seconds_me = answers_wait_seconds_me / answers_me
+                        me_answer_time = "{0:0.01f} мин.".format(answers_wait_seconds_me / 60)
+                    else:
+                        me_answer_time = '?'
+
+                    c = self.db_conn.cursor()
+                    c.execute(
+                        """
+                            UPDATE `entities` SET `to_answer_sec` = ?, `from_answer_sec` = ?
+                            WHERE `entity_id` = ?
+                        """, [str(answers_wait_seconds_me), str(answers_wait_seconds_another), str(user_id)]
+                    )
+                    self.db_conn.commit()
+
+                    longest_dates = ''
+                    longest_hours = 0
+                    if longest_len > 1:
+                        msg_date1 = self.datetime_from_str(longest_dialog[0]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                        msg_date2 = self.datetime_from_str(longest_dialog[longest_len - 1]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                        longest_hours = (msg_date2 - msg_date1).total_seconds() / (24 * 60 * 60)
+                        longest_dates = self.datetime_to_str(msg_date1) + ' --- ' + self.datetime_to_str(msg_date2)
+
+                    results.append('Сообщений '+another_name+': {0:0.001f} Kb.'.format(msg_len_another/1024))
+                    results.append('Сообщений '+me_name+': {0:0.001f} Kb.'.format(msg_len_me/1024))
+                    results.append('Средняя длина сообщения '+another_name+': {0:0.01f} сим.'.format(msg_len_another / msg_another_cnt))
+                    results.append('Средняя длина сообщения '+me_name+': {0:0.01f} сим.'.format(msg_len_me / msg_me_cnt))
+                    results.append('Самое длинное сообщение '+another_name+': ' + str(msg_another_max_len) + ' сим.')
+                    results.append('Самое длинное сообщение '+me_name+': ' + str(msg_me_max_len) + ' сим.')
+                    results.append('')
+                    results.append('Число диалогов: ' + str(len(dialogues)))
+                    results.append('Сообщений в самом коротком диалоге: ' + str(shortest_len))
+                    results.append('Сообщений в самом длинном диалоге: ' + str(longest_len))
+                    results.append('Самый длинный диалог: ' + longest_dates + ' ({0:0.001f} сут)'.format(longest_hours))
+                    results.append('В среднем ' + another_name + ' отвечает за: ' + another_answer_time)
+                    results.append('В среднем ' + me_name + ' отвечает за: ' + me_answer_time)
+                    results.append('')
+                    if not date_from:
+                        results.append('За время активности скрипта ('+str(days_a)+' сут.):')
+                        results.append('Правок сообщений ' + another_name + ': ' + str(another_edits))
+                        results.append('Правок сообщений ' + me_name + ': ' + str(me_edits))
+                        results.append('Удалений сообщений ' + another_name + ': ' + str(another_deletes))
+                        results.append('Удалений сообщений ' + me_name + ': ' + str(me_deletes))
+        return results
+
     async def get_stat_user_messages(self, user_id, from_user_id=None):
         results = []
         res = self.db_conn.execute(
@@ -498,179 +693,18 @@ class StatusController:
                 results.append('Диалогов с пользователями: ' + str(len(user_ids_week)) + ' / ' + str(len(user_ids_month)) + ' / ' + str(len(user_ids_all)))
 
         if from_user_id and (from_user_id != user_id) and ((user_id != self.tg_client.me_user_id) or (from_user_id != self.tg_client.me_user_id)):
-            try:
-                user_entity = await self.tg_client.get_entity(PeerUser(user_id))
-            except:
-                user_entity = None
-            if user_entity and (type(user_entity) == User):
-                res = self.db_conn.execute(
-                    """
-                        SELECT *
-                        FROM `messages`
-                        WHERE `entity_id` = ? OR `entity_id` = ?
-                        ORDER BY `taken_at` ASC
-                    """,
-                    [str(user_id), str(from_user_id)])
-                rows = list(res.fetchall())
-                if user_id != self.tg_client.me_user_id:
-                    other_id = user_id
-                else:
-                    other_id = from_user_id
-                me_name = await self.tg_client.get_entity_name(self.tg_client.me_user_id, 'User')
-                another_name = await self.tg_client.get_entity_name(other_id, 'User')
-                dialog_name = me_name + ' <-> ' + another_name
-
-                results.append('')
-                results.append('')
-                results.append('**Диалог '+dialog_name+':**')
-                results.append('')
-                results.append('Сообщений диалога в БД: ' + str(len(rows)))
-                if len(rows) > 0:
-                    date_start = self.datetime_from_str(rows[0]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                    results.append('Самое раннее сообщение диалога в БД: ' + self.datetime_to_str(date_start))
-                    if len(rows) > 1:
-                        date_end = self.datetime_from_str(rows[len(rows) - 1]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                        seconds_count = (date_end - date_start).total_seconds()
-                        days_count = seconds_count / (24 * 60 * 60)
-                        messages_count = len(rows)
-                        results.append('Длительность общения: ' + str(round(days_count * 100)*0.01) + ' суток')
-                        results.append('Средняя частота сообщений: ' + str(round(1000 * messages_count / days_count)*0.001) + ' в сутки')
-
-                        max_dialog_interval = round((24 * 60 * 60) * 1.25)
-
-                        msg_len_me = 0
-                        msg_me_cnt = 0
-                        msg_me_max_len = 0
-                        msg_len_another = 0
-                        msg_another_cnt = 0
-                        msg_another_max_len = 0
-
-                        me_edits = 0
-                        another_edits = 0
-                        me_deletes = 0
-                        another_deletes = 0
-
-                        dialogues = []
-                        active_dialog = []
-                        last_date = date_start
-                        for row in rows:
-                            if not row['message']:
-                                row['message'] = ''
-                            if int(row['removed']) == 1:
-                                if int(row['from_id']) == self.tg_client.me_user_id:
-                                    me_deletes = me_deletes + 1
-                                else:
-                                    another_deletes = another_deletes + 1
-                            else:
-                                if int(row['version']) == 1:
-                                    msg_len = len(row['message'])
-                                    if int(row['from_id']) == self.tg_client.me_user_id:
-                                        msg_len_me = msg_len_me + msg_len
-                                        msg_me_cnt = msg_me_cnt + 1
-                                        if msg_len > msg_me_max_len:
-                                            msg_me_max_len = msg_len
-                                    else:
-                                        msg_len_another = msg_len_another + msg_len
-                                        msg_another_cnt = msg_another_cnt + 1
-                                        if msg_len > msg_another_max_len:
-                                            msg_another_max_len = msg_len
-                                    msg_date = self.datetime_from_str(row['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                                    if (len(active_dialog) == 0) or ((msg_date - last_date).total_seconds() > max_dialog_interval):
-                                        if len(active_dialog) > 0:
-                                            dialogues.append(active_dialog)
-                                            active_dialog = []
-                                    active_dialog.append(row)
-                                    last_date = msg_date
-                                else:
-                                    if int(row['from_id']) == self.tg_client.me_user_id:
-                                        me_edits = me_edits + 1
-                                    else:
-                                        another_edits = another_edits + 1
-
-                        if len(active_dialog) > 0:
-                            dialogues.append(active_dialog)
-                            active_dialog = []
-
-                        answers_me = 0
-                        answers_wait_seconds_me = 0
-                        answers_another = 0
-                        answers_wait_seconds_another = 0
-
-                        longest_len = 0
-                        longest_dialog = None
-                        shortest_len = 0
-                        shortest_dialog = None
-
-                        for dial in dialogues:
-                            dial_len = len(dial)
-
-                            if (shortest_len == 0) or (dial_len < shortest_len):
-                                shortest_len = dial_len
-                                shortest_dialog = dial
-                            if (longest_len == 0) or (dial_len > longest_len):
-                                longest_len = dial_len
-                                longest_dialog = dial
-
-                            last_msg_id = None
-                            last_msg_date = None
-                            for dia in dial:
-                                msg_date = self.datetime_from_str(dia['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                                if last_msg_id and last_msg_id != int(dia['from_id']):
-                                    if last_msg_id == self.tg_client.me_user_id:
-                                        answers_another = answers_another + 1
-                                        answers_wait_seconds_another = answers_wait_seconds_another + (msg_date - last_msg_date).total_seconds()
-                                    else:
-                                        answers_me = answers_me + 1
-                                        answers_wait_seconds_me = answers_wait_seconds_me + (msg_date - last_msg_date).total_seconds()
-                                last_msg_date = msg_date
-                                last_msg_id = int(dia['from_id'])
-
-                        answers_wait_seconds_another = answers_wait_seconds_another / answers_another
-                        another_answer_time = answers_wait_seconds_another / (60)
-                        another_answer_time = round(another_answer_time * 100) * 0.01
-                        another_answer_time = str(another_answer_time) + ' мин.'
-
-                        answers_wait_seconds_me = answers_wait_seconds_me / answers_me
-                        me_answer_time = answers_wait_seconds_me / (60)
-                        me_answer_time = round(me_answer_time * 100) * 0.01
-                        me_answer_time = str(me_answer_time) + ' мин.'
-
-                        c = self.db_conn.cursor()
-                        c.execute(
-                            """
-                                UPDATE `entities` SET `to_answer_sec` = ?, `from_answer_sec` = ?
-                                WHERE `entity_id` = ?
-                            """, [str(answers_wait_seconds_me), str(answers_wait_seconds_another), str(other_id)]
-                        )
-                        self.db_conn.commit()
-
-                        longest_dates = ''
-                        longest_hours = 0
-                        if longest_len > 1:
-                            msg_date1 = self.datetime_from_str(longest_dialog[0]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                            msg_date2 = self.datetime_from_str(longest_dialog[longest_len - 1]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                            longest_hours = (msg_date2 - msg_date1).total_seconds() / (24 * 60 * 60)
-                            longest_dates = self.datetime_to_str(msg_date1) + ' --- ' + self.datetime_to_str(msg_date2)
-
-                        results.append('Сообщений '+another_name+': ' + str(msg_another_cnt) + ' на ' + str(round(100 * msg_len_another/1024) * 0.01) + ' Kb')
-                        results.append('Сообщений '+me_name+': ' + str(msg_me_cnt) + ' на ' + str(round(100 * msg_len_me/1024) * 0.01) + ' Kb')
-                        results.append('Средняя длина сообщения '+another_name+': ' + str(0.01 * round(100 * msg_len_another / msg_another_cnt)) + ' сим.')
-                        results.append('Средняя длина сообщения '+me_name+': ' + str(0.01 * round(100 * msg_len_me / msg_me_cnt)) + ' сим.')
-                        results.append('Самое длинное сообщение '+another_name+': ' + str(msg_another_max_len) + ' сим.')
-                        results.append('Самое длинное сообщение '+me_name+': ' + str(msg_me_max_len) + ' сим.')
-                        results.append('')
-                        results.append('Число диалогов: ' + str(len(dialogues)))
-                        results.append('Сообщений в самом коротком диалоге: ' + str(shortest_len))
-                        results.append('Сообщений в самом длинном диалоге: ' + str(longest_len))
-                        results.append('Самый длинный диалог: ' + longest_dates + ' (' + str(round(100 * longest_hours) * 0.01) + ' сут)')
-                        results.append('В среднем ' + another_name + ' отвечает за: ' + another_answer_time)
-                        results.append('В среднем ' + me_name + ' отвечает за: ' + me_answer_time)
-                        results.append('')
-                        results.append('За время активности скрипта ('+str(days_a)+' сут.):')
-                        results.append('Правок сообщений ' + another_name + ': ' + str(another_edits))
-                        results.append('Правок сообщений ' + me_name + ': ' + str(me_edits))
-                        results.append('Удалений сообщений ' + another_name + ': ' + str(another_deletes))
-                        results.append('Удалений сообщений ' + me_name + ': ' + str(me_deletes))
+            if user_id != self.tg_client.me_user_id:
+                other_id = user_id
+            else:
+                other_id = from_user_id
+            results.append('')
+            results.append('')
+            results = results + await self.get_me_dialog_statistics(other_id, days_a=days_a)
+            results.append('')
+            results.append('')
+            results = results + await self.get_me_dialog_statistics(other_id, datetime.now() - timedelta(days=31), 'за месяц', days_a)
+            results.append('')
+            results = results + await self.get_me_dialog_statistics(other_id, datetime.now() - timedelta(days=7), 'за неделю', days_a)
 
         results = "\n".join(results)
         return results
