@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import math
 
 import plotly
+import re
 from telethon.tl.types import UserStatusOnline, UserStatusOffline, PeerUser, User
 import plotly.graph_objects as go
 import plotly.io as pio
@@ -429,12 +430,8 @@ class StatusController:
             else:
                 stat_res = 'Пользователь'
 
-            c_time = row['answer_sec']
-            answer_time = c_time / 60
-            answer_time = round(answer_time * 100) * 0.01
-            answer_time = str(answer_time) + ' мин.'
-
-            stat_res = stat_res + ' в среднем отвечает в течении '+answer_time
+            answer_time = row['answer_sec'] / 60
+            stat_res = stat_res + ' в среднем отвечает в течении {0:0.001f} мин.'.format(answer_time)
 
         return stat_res
 
@@ -489,7 +486,11 @@ class StatusController:
                         results.append('Длительность общения: {0:0.001f} суток'.format(days_count))
                     results.append('Средняя частота сообщений: {0:0.001f} в сутки'.format(messages_count / days_count))
 
-                    max_dialog_interval = round((24 * 60 * 60) * 1.25)
+                    max_dialog_question_interval = round((24 * 60 * 60) * 1.25)
+                    max_dialog_non_question_interval = round((24 * 60 * 60) * 0.75)
+                    max_dialog_hello_as_second_message_offset = round((24 * 60 * 60) * 0.25)
+                    dialog_hello_words = ['привет', 'приветствую', 'здравствуй', 'здравствуйте']
+                    dialog_hello_stop_context = ['-привет', '«всем привет»', '«привет»', '"привет"']
 
                     msg_len_me = 0
                     msg_me_cnt = 0
@@ -505,7 +506,9 @@ class StatusController:
 
                     dialogues = []
                     active_dialog = []
+                    last_msg_from_id = None
                     last_date = date_start
+                    last_msg_is_question = False
                     for row in rows:
                         if not row['message']:
                             row['message'] = ''
@@ -516,8 +519,17 @@ class StatusController:
                                 another_deletes = another_deletes + 1
                         else:
                             if int(row['version']) == 1:
+                                message_lower = str(row['message']).lower()
+                                message_words = re.sub("[^\w]", " ", message_lower).split()
+                                message_hello_words = list(filter(lambda x: x in dialog_hello_words, message_words))
+                                message_stop_contexts = list(filter(lambda x: message_lower.find(x) >= 0, dialog_hello_stop_context))
+
+                                msg_from_id = int(row['from_id'])
+                                msg_is_question = str(row['message']).find('?') >= 0
+                                msg_is_hello = (len(message_hello_words) > 0) and (len(message_stop_contexts) == 0)
+
                                 msg_len = len(row['message'])
-                                if int(row['from_id']) == self.tg_client.me_user_id:
+                                if msg_from_id == self.tg_client.me_user_id:
                                     msg_len_me = msg_len_me + msg_len
                                     msg_me_cnt = msg_me_cnt + 1
                                     if msg_len > msg_me_max_len:
@@ -528,12 +540,25 @@ class StatusController:
                                     if msg_len > msg_another_max_len:
                                         msg_another_max_len = msg_len
                                 msg_date = self.datetime_from_str(row['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                                if (len(active_dialog) == 0) or ((msg_date - last_date).total_seconds() > max_dialog_interval):
+                                if (
+                                        (len(active_dialog) == 0) or (
+                                            last_msg_is_question and
+                                            ((msg_date - last_date).total_seconds() > max_dialog_question_interval)
+                                        ) or (
+                                            not last_msg_is_question and
+                                            ((msg_date - last_date).total_seconds() > max_dialog_non_question_interval)
+                                        )
+                                ):
                                     if len(active_dialog) > 0:
                                         dialogues.append(active_dialog)
                                         active_dialog = []
                                 active_dialog.append(row)
                                 last_date = msg_date
+                                if last_msg_from_id != msg_from_id:
+                                    last_msg_is_question = msg_is_question
+                                else:
+                                    last_msg_is_question = last_msg_is_question or msg_is_question
+                                last_msg_from_id = msg_from_id
                             else:
                                 if int(row['from_id']) == self.tg_client.me_user_id:
                                     me_edits = me_edits + 1
@@ -568,10 +593,12 @@ class StatusController:
                         last_msg_date = None
                         for dia in dial:
                             msg_date = self.datetime_from_str(dia['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                            if last_msg_id and last_msg_id != int(dia['from_id']):
+                            if last_msg_id and (last_msg_id != int(dia['from_id'])):
                                 seconds_between = (msg_date - last_msg_date).total_seconds()
                                 if seconds_between > (60 * 60 * 4) and ((last_msg_date.time().hour < 6) or (last_msg_date.time().hour >= 22)):
                                     # somebody just sleep
+                                    last_msg_date = msg_date
+                                    last_msg_id = int(dia['from_id'])
                                     continue
                                 if last_msg_id == self.tg_client.me_user_id:
                                     answers_another = answers_another + 1

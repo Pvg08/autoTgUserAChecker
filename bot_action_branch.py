@@ -8,6 +8,7 @@ class BotActionBranch:
         self.tg_bot_controller = tg_bot_controller
         self.is_setup_mode = False
         self.max_commands = 1
+        self.read_once_callbacks = {}
         self.commands = {}
         self.command_groups = {}
         self.sub_commands_forbidden = []
@@ -33,7 +34,7 @@ class BotActionBranch:
             if ('class' in self.commands[k]) and self.commands[k]['class']:
                 self.register_branch(k, self.commands[k]['class'])
 
-    def can_use_branch(self):
+    def can_use_branch(self, user_id):
         return True
 
     def get_config_value(self, section, param):
@@ -52,7 +53,7 @@ class BotActionBranch:
                     self.commands[k]['desc'] and
                     (curr_place in self.commands[k]['places']) and
                     (curr_rights >= self.commands[k]['rights_level']) and
-                    (('condition' not in self.commands[k]) or self.commands[k]['condition']())
+                    (('condition' not in self.commands[k]) or self.commands[k]['condition'](for_user_id))
             ):
                 if k in self.command_groups:
                     commands_results.append('')
@@ -71,19 +72,32 @@ class BotActionBranch:
         text = re.sub(' +', ' ', text)
         return text.strip().lower()
 
-    def is_setup_condition(self):
+    def is_setup_condition(self, user_id):
         return self.is_setup_mode
+
+    async def read_bot_str(self, from_id, callback, message=None):
+        if message:
+            await self.send_message_to_user(from_id, message)
+        self.read_once_callbacks[str(from_id)] = callback
 
     async def run_main_setup(self, from_id, params, message_client, dialog_entity):
         if self.tg_bot_controller.is_active_for_user(from_id):
             self.is_setup_mode = True
-            msg_text = "\n".join(await self.get_commands_description_list(from_id))
-            await self.send_message_to_user(from_id, msg_text)
+            await self.show_current_branch_commands(from_id)
             pass
+
+    async def show_current_branch_commands(self, from_id):
+        msg_text = "\n".join(await self.get_commands_description_list(from_id))
+        await self.send_message_to_user(from_id, msg_text)
 
     async def on_bot_message(self, message, from_id, dialog_entity):
         if not self.is_setup_mode:
             return False
+        str_from_id = str(from_id)
+        if (str_from_id in self.read_once_callbacks) and self.read_once_callbacks[str_from_id]:
+            await self.read_once_callbacks[str_from_id](message, from_id, dialog_entity)
+            self.read_once_callbacks[str_from_id] = None
+            return True
         message = message.lower()
         if await self.run_command_text(message, from_id):
             return True
@@ -102,7 +116,7 @@ class BotActionBranch:
             if (
                     (curr_place in command['places']) and
                     (curr_rights >= command['rights_level']) and
-                    (('condition' not in command) or command['condition']()) and
+                    (('condition' not in command) or command['condition'](from_id)) and
                     ('cmd' in command) and
                     command['cmd']
             ):
@@ -119,14 +133,14 @@ class BotActionBranch:
             return True
         return False
 
-    async def send_message_to_user(self, user_id, message):
+    async def send_message_to_user(self, user_id, message, link_preview=False):
         if not self.tg_bot_controller.is_active_for_user(user_id):
             return
         str_user_id = str(user_id)
         message_client = self.tg_bot_controller.users[str_user_id]['message_client']
         dialog_entity = self.tg_bot_controller.users[str_user_id]['dialog_entity']
         message = self.tg_bot_controller.text_to_bot_text(message, user_id)
-        await message_client.send_message(dialog_entity, message)
+        await message_client.send_message(dialog_entity, message, link_preview=link_preview)
 
     async def send_file_to_user(self, user_id, file_name, caption, force_document=False):
         if not self.tg_bot_controller.is_active_for_user(user_id):

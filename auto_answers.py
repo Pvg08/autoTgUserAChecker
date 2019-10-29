@@ -77,10 +77,10 @@ class AutoAnswers(BotActionBranch):
         }
         self.on_init_finish()
 
-    def is_active(self):
+    def is_active(self, user_id):
         return self.aa_options['is_set']
 
-    def has_users_setup(self):
+    def has_users_setup(self, user_id):
         return self.aa_options['is_set'] and (len(self.aa_for_users) > 0)
 
     def reset_aa(self):

@@ -200,6 +200,7 @@ class InteractiveTelegramClient(TelegramClient):
                 "taken_at" DATETIME NOT NULL,
                 "to_answer_sec" REAL,
                 "from_answer_sec" REAL,
+                "instagram_username" TEXT NULL,
                 "version" INTEGER NOT NULL
             );
         """)
@@ -321,9 +322,10 @@ class InteractiveTelegramClient(TelegramClient):
             entity_type = 'Megagroup'
 
         c = self.db_conn.cursor()
-        c.execute('INSERT INTO `entities` VALUES(?, ?, ?, ?, ?, ?, ?, ?)', [
+        c.execute('INSERT INTO `entities` VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)', [
             str(entity_id), str(entity_type), entity_name, entity_phone,
             self.status_controller.datetime_to_str(datetime.now()),
+            None,
             None,
             None,
             str(version)
@@ -335,6 +337,37 @@ class InteractiveTelegramClient(TelegramClient):
         if str_channel_id in self.channel_megagroups:
             return self.channel_megagroups[str_channel_id]
         return False
+
+    def get_user_instagram_name(self, user_id):
+        try:
+            row = self.db_conn.execute("""
+                SELECT * FROM `entities` WHERE `entity_id` = ? ORDER BY `version` DESC LIMIT 1
+            """, [str(user_id)]).fetchone()
+            if row and ('instagram_username' in row) and row['instagram_username']:
+                return row['instagram_username']
+        except:
+            traceback.print_exc()
+        return None
+
+    def set_user_instagram_name(self, user_id, username):
+        try:
+            row = self.db_conn.execute("""
+                SELECT * FROM `entities` WHERE `entity_id` = ? ORDER BY `version` DESC LIMIT 1
+            """, [str(user_id)]).fetchone()
+            if row and ('version' in row):
+                version = int(row['version'])
+            else:
+                version = 1
+            c = self.db_conn.cursor()
+            c.execute("""
+                UPDATE `entities` SET `instagram_username` = ?
+                WHERE `entity_id` = ? AND `version` = ?
+            """, [
+                username, str(user_id), str(version)
+            ])
+            self.db_conn.commit()
+        except:
+            traceback.print_exc()
 
     async def get_entity_name(self, entity_id, entity_type='', allow_str_id=True, with_additional_text=False):
         if not entity_id:
