@@ -570,7 +570,7 @@ class StatusController:
                             msg_date = self.datetime_from_str(dia['taken_at'], '%Y-%m-%d %H:%M:%S%z')
                             if last_msg_id and last_msg_id != int(dia['from_id']):
                                 seconds_between = (msg_date - last_msg_date).total_seconds()
-                                if seconds_between > (60 * 60 * 6) and ((last_msg_date.time().hour < 6) or (last_msg_date.time().hour >= 22)):
+                                if seconds_between > (60 * 60 * 4) and ((last_msg_date.time().hour < 6) or (last_msg_date.time().hour >= 22)):
                                     # somebody just sleep
                                     continue
                                 if last_msg_id == self.tg_client.me_user_id:
@@ -675,10 +675,10 @@ class StatusController:
         res = self.db_conn.execute(
             """
                 SELECT *
-                FROM `activity` WHERE user_id = ?
+                FROM `activity`
                 ORDER BY taken_at ASC
             """,
-            [str(user_id)])
+            [])
         rows = list(res.fetchall())
         days_a = 1
         if len(rows) > 1:

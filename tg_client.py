@@ -130,7 +130,7 @@ class InteractiveTelegramClient(TelegramClient):
         self.db_conn = self.get_db('client_data.db')
         self.status_controller = StatusController(self)
         self.bot_controller = BotController(self)
-        self.bot_controller.init_branches()
+        self.bot_controller.register_cmd_branches()
         self.aa_controller = self.bot_controller.commands['/auto']['cmd']
         self.last_update = None
         self.dialogs_init_complete = False

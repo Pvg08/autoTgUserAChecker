@@ -24,7 +24,22 @@ class BotActionBranch:
             self.tg_bot_controller.sub_commands_forbidden = self.tg_bot_controller.sub_commands_forbidden + list(self.commands.keys())
 
     def register_branch(self, command, cmd_class):
-        self.commands[command]['cmd'] = cmd_class(self)
+        obj = cmd_class(self.tg_bot_controller)
+        self.commands[command]['cmd'] = obj
+        self.commands[command]['condition'] = obj.can_use_branch
+
+    def register_cmd_branches(self):
+        for k in self.commands.keys():
+            if ('class' in self.commands[k]) and self.commands[k]['class']:
+                self.register_branch(k, self.commands[k]['class'])
+
+    def can_use_branch(self):
+        return True
+
+    def get_config_value(self, section, param):
+        if (section in self.tg_bot_controller.tg_client.config) and (param in self.tg_bot_controller.tg_client.config[section]):
+            return self.tg_bot_controller.tg_client.config[section][param]
+        return ''
 
     async def get_commands_description_list(self, for_user_id, str_pick_text='выберите дальнейшее действие'):
         result_str = []
@@ -63,7 +78,7 @@ class BotActionBranch:
         if self.tg_bot_controller.is_active_for_user(from_id):
             self.is_setup_mode = True
             msg_text = "\n".join(await self.get_commands_description_list(from_id))
-            await message_client.send_message(dialog_entity, msg_text)
+            await self.send_message_to_user(from_id, msg_text)
             pass
 
     async def on_bot_message(self, message, from_id, dialog_entity):

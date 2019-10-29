@@ -193,7 +193,7 @@ class AutoAnswers(BotActionBranch):
         elif self.setup_step == 200:
             msg = '**Настройка даты/времени прибытия**\n\n'
             msg = msg + 'оно будет указано ботом в начальном сообщении вида:\n'
-            msg = msg + '```'+self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message_time']+'```\n'
+            msg = msg + '```'+self.get_config_value('chat_bot', 'bot_aa_default_message_time')+'```\n'
             msg = msg + 'Введите дату/время'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
 
@@ -260,10 +260,10 @@ class AutoAnswers(BotActionBranch):
             await self.next_setup_step()
         elif self.setup_step == 7:
             if not message or (message in self.no_variants):
-                message = str(self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message'])
+                message = str(self.get_config_value('chat_bot', 'bot_aa_default_message'))
             elif re.match(r"[0-9]{1,2}:[0-9]{1,2}", message):
                 d_msg = message
-                message = str(self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message_time'])
+                message = str(self.get_config_value('chat_bot', 'bot_aa_default_message_time'))
                 message = message.replace('[datetime]', d_msg)
             self.aa_options['message'] = message
             await self.next_setup_step()
@@ -272,7 +272,7 @@ class AutoAnswers(BotActionBranch):
             await self.run_command_text(message, self.setup_user_id)
         elif self.setup_step == 200:
             await self.active_entity_client.send_message(self.active_dialog_entity, 'Сообщение изменено!')
-            self.aa_options['message'] = self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message_time']
+            self.aa_options['message'] = str(self.get_config_value('chat_bot', 'bot_aa_default_message_time'))
             self.aa_options['message'] = self.aa_options['message'].replace('[datetime]', message)
             self.is_setup_mode = False
             self.setup_step = 0
@@ -408,7 +408,7 @@ class AutoAnswers(BotActionBranch):
             if not self.aa_user_name:
                 self.aa_user_name = self.tg_bot_controller.tg_client.me_user_name
             if not message:
-                message = self.tg_bot_controller.tg_client.config['chat_bot']['bot_aa_default_message']
+                message = str(self.get_config_value('chat_bot', 'bot_aa_default_message'))
             self.reset_aa()
             self.aa_options = {
                 'is_set': True,
