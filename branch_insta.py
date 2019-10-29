@@ -133,13 +133,13 @@ class InstaBranch(BotActionBranch):
         return self.has_insta_lib and self.insta_username and self.insta_password
 
     def can_set_username(self, user_id):
-        uname = self.tg_bot_controller.tg_client.get_user_instagram_name(user_id)
+        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(user_id)
         if uname:
             return False
         return self.can_use_branch(user_id)
 
     def can_reset_username(self, user_id):
-        uname = self.tg_bot_controller.tg_client.get_user_instagram_name(user_id)
+        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(user_id)
         if not uname:
             return False
         return self.can_use_branch(user_id)
@@ -205,14 +205,14 @@ class InstaBranch(BotActionBranch):
         return None
 
     async def cmd_user_info(self, from_id, params):
-        uname = self.tg_bot_controller.tg_client.get_user_instagram_name(from_id)
+        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
         if uname:
             await self.on_info_read_username(uname, from_id, None)
         else:
             await self.read_bot_str(from_id, self.on_info_read_username, 'Введите имя пользователя Instagram:')
 
     async def cmd_check_followers(self, from_id, params):
-        uname = self.tg_bot_controller.tg_client.get_user_instagram_name(from_id)
+        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
         if uname:
             await self.on_check_read_username(uname, from_id, None)
         else:
@@ -222,14 +222,14 @@ class InstaBranch(BotActionBranch):
         await self.read_bot_str(from_id, self.on_check_set_username, 'Введите имя пользователя Instagram:')
 
     async def cmd_reset_username(self, from_id, params):
-        self.tg_bot_controller.tg_client.set_user_instagram_name(from_id, None)
+        self.tg_bot_controller.tg_client.entity_controller.set_user_instagram_name(from_id, None)
         await self.send_message_to_user(from_id, 'Выполнено!')
         await self.show_current_branch_commands(from_id)
 
     async def on_check_set_username(self, message, from_id, dialog_entity):
         info = await self.get_user_info_by_username(from_id, message)
         if info:
-            self.tg_bot_controller.tg_client.set_user_instagram_name(from_id, info['user']['username'])
+            self.tg_bot_controller.tg_client.entity_controller.set_user_instagram_name(from_id, info['user']['username'])
             await self.send_message_to_user(from_id, 'Выполнено!')
             await self.show_current_branch_commands(from_id)
 
