@@ -16,32 +16,32 @@ class DialogueBranch(BotActionBranch):
         self.commands = {
             '/dialogue_all': {
                 'cmd': self.cmd_dialogue_all,
-                'places': ['bot'],
+                'places': ['bot', 'dialog'],
                 'rights_level': 2,
                 'desc': 'статистика за всё время'
             },
             '/dialogue_month': {
                 'cmd': self.cmd_dialogue_month,
-                'places': ['bot'],
+                'places': ['bot', 'dialog'],
                 'rights_level': 2,
                 'desc': 'статистика за месяц'
             },
             '/dialogue_week': {
                 'cmd': self.cmd_dialogue_week,
-                'places': ['bot'],
+                'places': ['bot', 'dialog'],
                 'rights_level': 2,
                 'desc': 'статистика за неделю'
             },
             '/dialogue_last': {
                 'cmd': self.cmd_dialogue_last,
-                'places': ['bot'],
+                'places': ['bot', 'dialog'],
                 'rights_level': 2,
                 'desc': 'статистика за прошлый диалог'
             },
             '/back': {
                 'cmd': self.cmd_back,
                 'condition': self.is_setup_condition,
-                'places': ['bot'],
+                'places': ['bot', 'dialog'],
                 'rights_level': 1,
                 'desc': 'вернуться'
             },

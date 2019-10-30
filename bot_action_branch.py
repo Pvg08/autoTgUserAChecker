@@ -8,6 +8,7 @@ class BotActionBranch:
         self.tg_bot_controller = tg_bot_controller
         self.is_setup_mode = False
         self.max_commands = 1
+        self.branches = []
         self.read_once_callbacks = {}
         self.commands = {}
         self.command_groups = {}
@@ -19,9 +20,8 @@ class BotActionBranch:
         }
 
     def on_init_finish(self):
-        if self.tg_bot_controller.tg_client.tg_bot and (self != self.tg_bot_controller):
-            self.tg_bot_controller.tg_client.tg_bot.add_branch(self)
         if self != self.tg_bot_controller:
+            self.tg_bot_controller.add_branch(self)
             self.tg_bot_controller.sub_commands_forbidden = self.tg_bot_controller.sub_commands_forbidden + list(self.commands.keys())
 
     def register_branch(self, command, cmd_class):
@@ -33,6 +33,9 @@ class BotActionBranch:
         for k in self.commands.keys():
             if ('class' in self.commands[k]) and self.commands[k]['class']:
                 self.register_branch(k, self.commands[k]['class'])
+
+    def add_branch(self, branch):
+        self.branches.append(branch)
 
     def can_use_branch(self, user_id):
         return True

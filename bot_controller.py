@@ -343,6 +343,12 @@ class BotController(BotActionBranch):
     # USER -> BOT    user_id    bot_id            Bot                 chat_obj
     # ME -> BOT      me_id      bot_id            Bot                 chat_obj
     async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type, bot_chat=None):
+
+        for branch in self.branches:
+            if branch.is_setup_mode:
+                if await branch.on_bot_message(command_text, from_id, bot_chat):
+                    return
+
         if from_entity_type not in ['User', 'Bot']:
             self.stop_chat_with_user(from_entity_id)
             return
