@@ -435,10 +435,24 @@ class StatusController:
 
         return stat_res
 
-    async def get_me_dialog_statistics(self, user_id, date_from=None, title='за всё время', days_a=None):
-        if not days_a:
-            days_a = '?'
+    async def get_me_dialog_statistics(self, user_id, date_from=None, title='за всё время', only_last_dialog=False):
+        days_a = '?'
+        if (not date_from) and (not only_last_dialog):
+            res = self.db_conn.execute(
+                """
+                    SELECT *
+                    FROM `activity`
+                    ORDER BY taken_at ASC
+                """,
+                [])
+            rows = list(res.fetchall())
+            days_a = 1
+            if len(rows) > 1:
+                date1 = self.datetime_from_str(rows[0]['taken_at'])
+                date2 = self.datetime_from_str(rows[len(rows) - 1]['taken_at'])
+                days_a = round((date2 - date1).total_seconds() / (24 * 60 * 60))
         results = []
+        last_dialogue_date = None
         try:
             user_entity = await self.tg_client.get_entity(PeerUser(user_id))
         except:
@@ -476,21 +490,23 @@ class StatusController:
             results.append('Сообщений диалога в БД: ' + str(len(rows)))
             if len(rows) > 0:
                 date_start = self.datetime_from_str(rows[0]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
-                results.append('Самое раннее сообщение диалога в БД: ' + self.datetime_to_str(date_start))
+                if not only_last_dialog:
+                    results.append('Самое раннее сообщение диалога в БД: ' + self.datetime_to_str(date_start))
                 if len(rows) > 1:
                     date_end = self.datetime_from_str(rows[len(rows) - 1]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
                     seconds_count = (date_end - date_start).total_seconds()
                     days_count = seconds_count / (24 * 60 * 60)
                     messages_count = len(rows)
-                    if not date_from:
+                    if (not date_from) and (not only_last_dialog):
                         results.append('Длительность общения: {0:0.001f} суток'.format(days_count))
-                    results.append('Средняя частота сообщений: {0:0.001f} в сутки'.format(messages_count / days_count))
+                    if not only_last_dialog:
+                        results.append('Средняя частота сообщений: {0:0.001f} в сутки'.format(messages_count / days_count))
 
                     max_dialog_question_interval = round((24 * 60 * 60) * 1.25)
                     max_dialog_non_question_interval = round((24 * 60 * 60) * 0.75)
                     max_dialog_hello_as_second_message_offset = round((24 * 60 * 60) * 0.25)
                     dialog_hello_words = ['привет', 'приветствую', 'здравствуй', 'здравствуйте']
-                    dialog_hello_stop_context = ['-привет', '«всем привет»', '«привет»', '"привет"']
+                    dialog_hello_stop_context = ['-привет', 'всем привет', 'привет»', 'привет"']
 
                     msg_len_me = 0
                     msg_me_cnt = 0
@@ -503,6 +519,9 @@ class StatusController:
                     another_edits = 0
                     me_deletes = 0
                     another_deletes = 0
+
+                    me_hello = 0
+                    another_hello = 0
 
                     dialogues = []
                     active_dialog = []
@@ -528,6 +547,11 @@ class StatusController:
                                 msg_is_question = str(row['message']).find('?') >= 0
                                 msg_is_hello = (len(message_hello_words) > 0) and (len(message_stop_contexts) == 0)
 
+                                if msg_is_hello:
+                                    if msg_from_id == self.tg_client.me_user_id:
+                                        me_hello = me_hello + 1
+                                    else:
+                                        another_hello = another_hello + 1
                                 msg_len = len(row['message'])
                                 if msg_from_id == self.tg_client.me_user_id:
                                     msg_len_me = msg_len_me + msg_len
@@ -568,6 +592,11 @@ class StatusController:
                     if len(active_dialog) > 0:
                         dialogues.append(active_dialog)
                         active_dialog = []
+
+                    if only_last_dialog:
+                        dialogues = [dialogues[len(dialogues) - 1]]
+                    else:
+                        last_dialogue_date = self.datetime_from_str(dialogues[len(dialogues) - 1][0]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
 
                     answers_me = 0
                     answers_wait_seconds_me = 0
@@ -644,21 +673,32 @@ class StatusController:
                     results.append('Средняя длина сообщения '+me_name+': {0:0.01f} сим.'.format(msg_len_me / msg_me_cnt))
                     results.append('Самое длинное сообщение '+another_name+': ' + str(msg_another_max_len) + ' сим.')
                     results.append('Самое длинное сообщение '+me_name+': ' + str(msg_me_max_len) + ' сим.')
-                    results.append('')
-                    results.append('Число диалогов: ' + str(len(dialogues)))
-                    results.append('Сообщений в самом коротком диалоге: ' + str(shortest_len))
-                    results.append('Сообщений в самом длинном диалоге: ' + str(longest_len))
-                    results.append('Самый длинный диалог: ' + longest_dates + ' ({0:0.001f} сут)'.format(longest_hours))
+                    results.append('Число приветствий от '+another_name+': ' + str(me_hello))
+                    results.append('Число приветствий от '+me_name+': ' + str(another_hello))
+
+                    if not only_last_dialog:
+                        results.append('')
+                        results.append('Число диалогов: ' + str(len(dialogues)))
+                        results.append('Сообщений в самом коротком диалоге: ' + str(shortest_len))
+                        results.append('Сообщений в самом длинном диалоге: ' + str(longest_len))
+                        results.append('Самый длинный диалог: ' + longest_dates + ' ({0:0.001f} сут)'.format(longest_hours))
+                    else:
+                        results.append('Сообщений в диалоге: ' + str(longest_len))
+                        results.append('Продолжительность диалога: ' + longest_dates + ' ({0:0.001f} сут)'.format(longest_hours))
+
                     results.append('В среднем ' + another_name + ' отвечает за: ' + another_answer_time)
                     results.append('В среднем ' + me_name + ' отвечает за: ' + me_answer_time)
                     results.append('')
-                    if not date_from:
+                    if (not date_from) and (not only_last_dialog):
                         results.append('За время активности скрипта ('+str(days_a)+' сут.):')
                         results.append('Правок сообщений ' + another_name + ': ' + str(another_edits))
                         results.append('Правок сообщений ' + me_name + ': ' + str(me_edits))
                         results.append('Удалений сообщений ' + another_name + ': ' + str(another_deletes))
                         results.append('Удалений сообщений ' + me_name + ': ' + str(me_deletes))
-        return results
+        return {
+            'results': results,
+            'last_dialogue_date': last_dialogue_date
+        }
 
     async def get_stat_user_messages(self, user_id, from_user_id=None):
         results = []
@@ -699,39 +739,11 @@ class StatusController:
         chat_ids_week = [x['entity_id'] for x in filter(lambda x: x['entity_type'] in ['Megagroup', 'Channel', 'Chat'], rows)]
         user_ids_week = [x['entity_id'] for x in filter(lambda x: x['entity_type'] in ['User'], rows)]
 
-        res = self.db_conn.execute(
-            """
-                SELECT *
-                FROM `activity`
-                ORDER BY taken_at ASC
-            """,
-            [])
-        rows = list(res.fetchall())
-        days_a = 1
-        if len(rows) > 1:
-            date1 = self.datetime_from_str(rows[0]['taken_at'])
-            date2 = self.datetime_from_str(rows[len(rows) - 1]['taken_at'])
-            days_a = round((date2 - date1).total_seconds() / (24 * 60 * 60))
-
         if len(rows) > 0:
             results.append('**Активный участник (за последнюю неделю / месяц / всего): **')
             results.append('Чатов/мегагрупп: ' + str(len(chat_ids_week)) + ' / ' + str(len(chat_ids_month)) + ' / ' + str(len(chat_ids_all)))
             if len(user_ids_all) > 1:
                 results.append('Диалогов с пользователями: ' + str(len(user_ids_week)) + ' / ' + str(len(user_ids_month)) + ' / ' + str(len(user_ids_all)))
-
-        if from_user_id and (from_user_id != user_id) and ((user_id != self.tg_client.me_user_id) or (from_user_id != self.tg_client.me_user_id)):
-            if user_id != self.tg_client.me_user_id:
-                other_id = user_id
-            else:
-                other_id = from_user_id
-            results.append('')
-            results.append('')
-            results = results + await self.get_me_dialog_statistics(other_id, days_a=days_a)
-            results.append('')
-            results.append('')
-            results = results + await self.get_me_dialog_statistics(other_id, datetime.now() - timedelta(days=31), 'за месяц', days_a)
-            results.append('')
-            results = results + await self.get_me_dialog_statistics(other_id, datetime.now() - timedelta(days=7), 'за неделю', days_a)
 
         results = "\n".join(results)
         return results

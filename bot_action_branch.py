@@ -61,7 +61,7 @@ class BotActionBranch:
                         commands_results.append(self.command_groups[k])
                         commands_results.append('')
                 commands_count = commands_count + 1
-                commands_results.append('' + k + ' - ' + str(self.commands[k]['desc']))
+                commands_results.append('' + k + ' - ' + str(self.commands[k]['desc']).replace('[me_user]', self.tg_bot_controller.tg_client.me_user_name))
         result_str.append('\n'+str_pick_text+' (' + str(commands_count) + '/' + str(self.max_commands) + '):\n')
         result_str = result_str + commands_results
         return result_str

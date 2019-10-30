@@ -9,6 +9,7 @@ from telethon.tl.types import PeerUser, User, UserStatusOnline, UserStatusOfflin
 
 from bot_action_branch import BotActionBranch
 from auto_answers import AutoAnswers
+from branch_dialogue import DialogueBranch
 from branch_insta import InstaBranch
 from status_controller import StatusController
 
@@ -27,7 +28,7 @@ class BotController(BotActionBranch):
             '3': 'pre selected',
             '4': 'only me'
         }
-        self.max_commands = 12
+        self.max_commands = 13
         self.commands = {
             '/start': {
                 'cmd': self.cmd_start,
@@ -72,6 +73,13 @@ class BotController(BotActionBranch):
                 'places': ['bot', 'dialog'],
                 'rights_level': 2,
                 'desc': 'информация о пользователе.'
+            },
+            '/user_dialogue_info': {
+                'cmd': None,
+                'class': DialogueBranch,
+                'places': ['bot', 'dialog'],
+                'rights_level': 2,
+                'desc': 'статистика диалогов с пользователем [me_user].'
             },
             '/activity_today': {
                 'cmd': self.cmd_activity_today,
