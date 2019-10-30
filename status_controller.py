@@ -6,6 +6,7 @@ import math
 
 import plotly
 import re
+
 from telethon.tl.types import UserStatusOnline, UserStatusOffline, PeerUser, User
 import plotly.graph_objects as go
 import plotly.io as pio
@@ -17,6 +18,9 @@ class StatusController:
     def __init__(self, tg_client):
         self.tg_client = tg_client
         self.db_conn = tg_client.db_conn
+        self.morph = None
+        self.normal_form_cache = {}
+        self.word_type_form_cache = {}
 
     @staticmethod
     def init_db(cur):
@@ -435,7 +439,40 @@ class StatusController:
 
         return stat_res
 
-    async def get_me_dialog_statistics(self, user_id, date_from=None, title='за всё время', only_last_dialog=False):
+    def is_valid_word(self, string, allowed_types=None):
+        if re.search(r"[a-zA-Z0-9]+", string) is not None:
+            return False
+        if len(string) < 2:
+            return False
+        if string in ['мочь', 'раз']:
+            return False
+        if allowed_types is None:
+            allowed_types = ['СУЩ', 'ПРИЛ', 'ИНФ', 'ПРИЧ', 'ГЛ', 'КР_ПРИЛ', 'ПРЕДК', 'МЕЖД']
+        elif len(allowed_types) == 0:
+            return True
+        return self.get_word_type(string) in allowed_types
+
+    def get_normal_form(self, word):
+        if not self.morph:
+            import pymorphy2
+            self.morph = pymorphy2.MorphAnalyzer()
+        if word not in self.normal_form_cache:
+            ppparse = self.morph.parse(word)
+            if ppparse and ppparse[0] and ppparse[0].normal_form:
+                self.normal_form_cache[word] = ppparse[0].normal_form
+            else:
+                self.normal_form_cache[word] = word
+        return self.normal_form_cache[word]
+
+    def get_word_type(self, word):
+        if not self.morph:
+            import pymorphy2
+            self.morph = pymorphy2.MorphAnalyzer()
+        if word not in self.word_type_form_cache:
+            self.word_type_form_cache[word] = self.morph.parse(word)[0].tag.cyr_repr.split(",")[0].split()[0]
+        return self.word_type_form_cache[word]
+
+    async def get_me_dialog_statistics(self, user_id, date_from=None, title='за всё время', only_last_dialog=False, skip_vocab=False):
         days_a = '?'
         if (not date_from) and (not only_last_dialog):
             res = self.db_conn.execute(
@@ -523,6 +560,9 @@ class StatusController:
                     me_hello = 0
                     another_hello = 0
 
+                    me_words = []
+                    another_words = []
+
                     dialogues = []
                     active_dialog = []
                     last_msg_from_id = None
@@ -540,12 +580,21 @@ class StatusController:
                             if int(row['version']) == 1:
                                 message_lower = str(row['message']).lower()
                                 message_words = re.sub("[^\w]", " ", message_lower).split()
+                                message_words = list(filter(lambda x: x and self.is_valid_word(x, []), message_words))
+
                                 message_hello_words = list(filter(lambda x: x in dialog_hello_words, message_words))
                                 message_stop_contexts = list(filter(lambda x: message_lower.find(x) >= 0, dialog_hello_stop_context))
 
                                 msg_from_id = int(row['from_id'])
                                 msg_is_question = str(row['message']).find('?') >= 0
                                 msg_is_hello = (len(message_hello_words) > 0) and (len(message_stop_contexts) == 0)
+
+                                if not skip_vocab:
+                                    nform_list = [self.get_normal_form(x) for x in message_words]
+                                    if msg_from_id == self.tg_client.me_user_id:
+                                        me_words = me_words + nform_list
+                                    else:
+                                        another_words = another_words + nform_list
 
                                 if msg_is_hello:
                                     if msg_from_id == self.tg_client.me_user_id:
@@ -609,7 +658,6 @@ class StatusController:
                     longest_len = 0
                     longest_dialog = None
                     shortest_len = 0
-                    shortest_dialog = None
 
                     dia_me_start = 0
                     dia_another_start = 0
@@ -617,25 +665,35 @@ class StatusController:
                     dia_me_finish = 0
                     dia_another_finish = 0
 
+                    dia_between_seconds = 0
+                    dia_between_cnt = 0
+
+                    last_dia_end = None
                     for dial in dialogues:
                         dial_len = len(dial)
 
                         if (shortest_len == 0) or (dial_len < shortest_len):
                             shortest_len = dial_len
-                            shortest_dialog = dial
                         if (longest_len == 0) or (dial_len > longest_len):
                             longest_len = dial_len
                             longest_dialog = dial
 
                         if dial_len > 0:
-                            if int(dial[0]['from_id']) == self.tg_client.me_user_id:
+                            first_dial = dial[0]
+                            last_dial = dial[len(dial) - 1]
+                            if int(first_dial['from_id']) == self.tg_client.me_user_id:
                                 dia_me_start = dia_me_start + 1
                             else:
                                 dia_another_start = dia_another_start + 1
-                            if int(dial[len(dial) - 1]['from_id']) == self.tg_client.me_user_id:
+                            if int(last_dial['from_id']) == self.tg_client.me_user_id:
                                 dia_me_finish = dia_me_finish + 1
                             else:
                                 dia_another_finish = dia_another_finish + 1
+                            if last_dia_end:
+                                curr_first_dia_begin = self.datetime_from_str(first_dial['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                                dia_between_seconds = dia_between_seconds + (curr_first_dia_begin - last_dia_end).total_seconds()
+                                dia_between_cnt = dia_between_cnt + 1
+                            last_dia_end = self.datetime_from_str(last_dial['taken_at'], '%Y-%m-%d %H:%M:%S%z')
 
                         last_msg_id = None
                         last_msg_date = None
@@ -656,6 +714,12 @@ class StatusController:
                                     answers_wait_seconds_me = answers_wait_seconds_me + seconds_between
                             last_msg_date = msg_date
                             last_msg_id = int(dia['from_id'])
+
+                    if dia_between_cnt > 0:
+                        dia_between_time = dia_between_seconds / dia_between_cnt
+                        dia_between_time = "{0:0.01f} сут.".format(dia_between_time / (60 * 60 * 24))
+                    else:
+                        dia_between_time = '?'
 
                     if answers_another > 0:
                         answers_wait_seconds_another = answers_wait_seconds_another / answers_another
@@ -687,6 +751,54 @@ class StatusController:
                         longest_hours = (msg_date2 - msg_date1).total_seconds() / (24 * 60 * 60)
                         longest_dates = self.datetime_to_str(msg_date1) + ' --- ' + self.datetime_to_str(msg_date2)
 
+                    valid_word_types = ['СУЩ']
+
+                    me_top_10 = None
+                    me_last_cnt = None
+                    me_words_count = 0
+                    if (not skip_vocab) and (len(me_words) > 0):
+                        all_words = {}
+                        for word in me_words:
+                            if word and (word not in all_words):
+                                all_words[word] = True
+                        me_words_count = len(all_words)
+
+                        me_words = list(filter(lambda x: x and self.is_valid_word(x, valid_word_types), me_words))
+                        wordlist = sorted(me_words)
+                        wordfreq = [wordlist.count(p) for p in wordlist]
+                        dic = dict(zip(wordlist, wordfreq))
+                        words = list(sorted(dic.items(), key=lambda x: x[1], reverse=True))
+                        top_10 = list(map(lambda x: x[0], words[0:10]))
+                        last_word, last_cnt = words[len(words) - 1]
+                        last_cnt_words = map(lambda x: x[0], filter(lambda s: s[1] == last_cnt, words))
+                        last_cnt_words = list(sorted(last_cnt_words, key=lambda x: len(x), reverse=True))
+                        last_cnt_words = last_cnt_words[0:10]
+                        me_top_10 = top_10
+                        me_last_cnt = last_cnt_words
+
+                    another_top_10 = None
+                    another_last_cnt = None
+                    another_words_count = 0
+                    if (not skip_vocab) and (len(another_words) > 0):
+                        all_words = {}
+                        for word in another_words:
+                            if word and (word not in all_words):
+                                all_words[word] = True
+                        another_words_count = len(all_words)
+
+                        another_words = list(filter(lambda x: x and self.is_valid_word(x, valid_word_types), another_words))
+                        wordlist = sorted(another_words)
+                        wordfreq = [wordlist.count(p) for p in wordlist]
+                        dic = dict(zip(wordlist, wordfreq))
+                        words = list(sorted(dic.items(), key=lambda x: x[1], reverse=True))
+                        top_10 = list(map(lambda x: x[0], words[0:10]))
+                        last_word, last_cnt = words[len(words) - 1]
+                        last_cnt_words = map(lambda x: x[0], filter(lambda s: s[1] == last_cnt, words))
+                        last_cnt_words = list(sorted(last_cnt_words, key=lambda x: len(x), reverse=True))
+                        last_cnt_words = last_cnt_words[0:10]
+                        another_top_10 = top_10
+                        another_last_cnt = last_cnt_words
+
                     results.append('Сообщений '+another_name+': {0:0.001f} Kb.'.format(msg_len_another/1024))
                     results.append('Сообщений '+me_name+': {0:0.001f} Kb.'.format(msg_len_me/1024))
                     if msg_another_cnt > 0:
@@ -695,8 +807,8 @@ class StatusController:
                         results.append('Средняя длина сообщения '+me_name+': {0:0.01f} сим.'.format(msg_len_me / msg_me_cnt))
                     results.append('Самое длинное сообщение '+another_name+': ' + str(msg_another_max_len) + ' сим.')
                     results.append('Самое длинное сообщение '+me_name+': ' + str(msg_me_max_len) + ' сим.')
-                    results.append('Число приветствий от '+another_name+': ' + str(me_hello))
-                    results.append('Число приветствий от '+me_name+': ' + str(another_hello))
+                    results.append('Число приветствий от '+another_name+': ' + str(another_hello))
+                    results.append('Число приветствий от '+me_name+': ' + str(me_hello))
 
                     if not only_last_dialog:
                         results.append('')
@@ -705,6 +817,8 @@ class StatusController:
                         results.append('Сообщений в самом длинном диалоге: ' + str(longest_len))
                         results.append('Самый длинный диалог: ' + longest_dates + ' ({0:0.001f} сут)'.format(longest_hours))
                         if len(dialogues) > 0:
+                            if dia_between_time != '?':
+                                results.append('Среднее время между диалогами: ' + str(dia_between_time))
                             results.append('Инициатор диалога ' + another_name + ': {0:0.001f} %'.format(100 * dia_another_start / len(dialogues)))
                             results.append('Инициатор диалога ' + me_name + ': {0:0.001f} %'.format(100 * dia_me_start / len(dialogues)))
                             results.append('Завершитель диалога ' + another_name + ': {0:0.001f} %'.format(100 * dia_another_finish / len(dialogues)))
@@ -732,6 +846,15 @@ class StatusController:
                         results.append('Правок сообщений ' + me_name + ': ' + str(me_edits))
                         results.append('Удалений сообщений ' + another_name + ': ' + str(another_deletes))
                         results.append('Удалений сообщений ' + me_name + ': ' + str(me_deletes))
+
+                    if me_top_10 or another_top_10:
+                        results.append('Различных слов ' + another_name + ' в диалогах: ' + str(another_words_count))
+                        results.append('Различных слов ' + me_name + ' в диалогах: ' + str(me_words_count))
+                        results.append('Самые частые слова (сущ) ' + another_name + ' в диалогах: **' + (", ".join(another_top_10)) + '**')
+                        results.append('Самые частые слова (сущ) ' + me_name + ' в диалогах: **' + (", ".join(me_top_10)) + '**')
+                        results.append('Самые редкие слова (сущ) ' + another_name + ' в диалогах: **' + (", ".join(another_last_cnt)) + '**')
+                        results.append('Самые редкие слова (сущ) ' + me_name + ' в диалогах: **' + (", ".join(me_last_cnt)) + '**')
+
         return {
             'results': results,
             'last_dialogue_date': last_dialogue_date

@@ -419,8 +419,12 @@ class BotController(BotActionBranch):
             user_name = await self.tg_client.get_entity_name(user_id, 'User')
         return "["+user_name+"](tg://user?id="+str(user_id)+")"
 
-    async def cmd_new_version_send(self, to_id, params):
-        await self.tg_client.tg_bot.send_version_message_to_all_bot_users()
+    async def cmd_new_version_send(self, from_id, params):
+        sent_count = await self.tg_client.tg_bot.send_version_message_to_all_bot_users()
+        if sent_count == 0:
+            await self.send_message_to_user(from_id, 'Некому отправлять!')
+        else:
+            await self.send_message_to_user(from_id, 'Отправлено сообщений: {}'.format(sent_count))
 
     async def cmd_user_info(self, to_id, params):
         from_id = to_id

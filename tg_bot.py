@@ -19,34 +19,38 @@ class InteractiveTelegramBot(TelegramClient):
         super().__init__(session_file, api_id, api_hash, connection=cl_conn, proxy=proxy, sequential_updates=True)
 
     async def send_version_message_to_all_bot_users(self):
-        version_messages = self.get_version_messages()
-        print(version_messages)
-        new_ver = float(self.tg_client.config['main']['actual_version'])
-        new_ver_title = str(self.tg_client.config['main']['new_version_title'])
-        new_ver_help = str(self.tg_client.config['main']['new_version_help'])
-        result_title = new_ver_title.replace('[actual_version]', "{0:0.01f}".format(new_ver)).replace('[bot_name]', self.tg_client.config['tg_bot']['bot_username'])
-        result_title = result_title + '\n' + new_ver_help
-        chats = self.tg_client.entity_controller.get_all_bot_users_chats()
-        print(chats)
-        if chats and len(chats) > 0:
-            for chat in chats:
-                user_last_version = self.tg_client.entity_controller.get_user_bot_last_version(chat.user_id)
-                if not user_last_version:
-                    user_last_version = 0.0
-                result_user_message=[]
-                for version_message in version_messages:
-                    if version_message['version'] > user_last_version:
-                        version_message_text = 'Список изменений версии {0:0.01f}:\n'.format(version_message['version'])
-                        version_message_text = version_message_text + version_message['message']
-                        result_user_message.append(version_message_text)
-                if len(result_user_message) > 0:
-                    result_user_message = result_title + '\n--------\n' + ("\n--------\n".join(result_user_message)).strip()
-                    self.tg_client.entity_controller.save_user_bot_last_version(chat.user_id, new_ver)
-                    await self.send_message(chat, result_user_message)
+        sent_count = 0
+        try:
+            version_messages = self.get_version_messages()
+            new_ver = float(self.tg_client.config['main']['actual_version'])
+            new_ver_title = str(self.tg_client.config['main']['new_version_title'])
+            new_ver_help = str(self.tg_client.config['main']['new_version_help'])
+            result_title = new_ver_title.replace('[actual_version]', "{0:0.01f}".format(new_ver)).replace('[bot_name]', self.tg_client.config['tg_bot']['bot_username'])
+            result_title = result_title + '\n' + new_ver_help
+            chats = self.tg_client.entity_controller.get_all_bot_users_chats()
+            if chats and len(chats) > 0:
+                for chat in chats:
+                    user_last_version = self.tg_client.entity_controller.get_user_bot_last_version(chat.user_id)
+                    if not user_last_version:
+                        user_last_version = 0.0
+                    result_user_message=[]
+                    for version_message in version_messages:
+                        if version_message['version'] > user_last_version:
+                            version_message_text = 'Список изменений версии {0:0.01f}:\n'.format(version_message['version'])
+                            version_message_text = version_message_text + version_message['message']
+                            result_user_message.append(version_message_text)
+                    if len(result_user_message) > 0:
+                        result_user_message = result_title + '\n--------\n' + ("\n--------\n".join(result_user_message)).strip()
+                        self.tg_client.entity_controller.save_user_bot_last_version(chat.user_id, new_ver)
+                        await self.send_message(chat, result_user_message)
+                        sent_count = sent_count + 1
+        except:
+            traceback.print_exc()
+        return sent_count
 
     @staticmethod
     def get_version_messages():
-        text_file = open("new_version.txt", "r", encoding="UTF-8")
+        text_file = open("changelog.txt", "r", encoding="UTF-8")
         lines = text_file.readlines()
         version_messages = []
         this_ver = 0.0

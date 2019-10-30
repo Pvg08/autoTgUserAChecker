@@ -12,13 +12,19 @@ class DialogueBranch(BotActionBranch):
 
         self.me_picker_cmd = None
 
-        self.max_commands = 5
+        self.max_commands = 6
         self.commands = {
             '/dialogue_all': {
                 'cmd': self.cmd_dialogue_all,
                 'places': ['bot', 'dialog'],
                 'rights_level': 2,
                 'desc': 'статистика за всё время'
+            },
+            '/dialogue_6month': {
+                'cmd': self.cmd_dialogue_6month,
+                'places': ['bot', 'dialog'],
+                'rights_level': 2,
+                'desc': 'статистика за 6 месяцев'
             },
             '/dialogue_month': {
                 'cmd': self.cmd_dialogue_month,
@@ -97,11 +103,19 @@ class DialogueBranch(BotActionBranch):
         await self.send_message_to_user(from_id, "\n".join(res['results']))
         await self.show_current_branch_commands(from_id)
 
+    async def cmd_dialogue_6month(self, from_id, params):
+        if await self.pick_user_if_need(from_id, params, self.cmd_dialogue_6month):
+            return
+        for_id = self.get_send_for_id(from_id, params)
+        res = await self.tg_bot_controller.tg_client.status_controller.get_me_dialog_statistics(for_id, datetime.now() - timedelta(days=183), 'за 6 месяцев')
+        await self.send_message_to_user(from_id, "\n".join(res['results']))
+        await self.show_current_branch_commands(from_id)
+
     async def cmd_dialogue_last(self, from_id, params):
         if await self.pick_user_if_need(from_id, params, self.cmd_dialogue_last):
             return
         for_id = self.get_send_for_id(from_id, params)
-        res = await self.tg_bot_controller.tg_client.status_controller.get_me_dialog_statistics(for_id)
+        res = await self.tg_bot_controller.tg_client.status_controller.get_me_dialog_statistics(for_id, skip_vocab=True)
         last_date = res['last_dialogue_date']
         if not last_date:
             await self.send_message_to_user(from_id, 'Диалогов не найдено')
