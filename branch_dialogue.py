@@ -55,7 +55,7 @@ class DialogueBranch(BotActionBranch):
             return True
         return False
 
-    async def on_pick_username(self, message, from_id, dialog_entity):
+    async def on_pick_username(self, message, from_id):
         if not self.me_picker_cmd:
             return
         for_id = await self.tg_bot_controller.get_from_id_param(from_id, [message])

@@ -600,7 +600,10 @@ class InteractiveTelegramClient(TelegramClient):
                 data = update.to_dict()
                 message_info = await self.collect_message_info(data['max_id'], update.peer)
                 if message_info:
-                    if int(self.config['notify_all']['notify_when_reads_message']) == 1:
+                    if self.tg_bot and (self.tg_bot.bot_entity_id == message_info['to_id']):
+                        if int(self.config['notify_all']['notify_when_my_bot_reads_message']) == 1:
+                            playsound(self.config['notify_sounds']['notify_when_reads_message_sound'], False)
+                    elif int(self.config['notify_all']['notify_when_reads_message']) == 1:
                         playsound(self.config['notify_sounds']['notify_when_reads_message_sound'], False)
                     elif (int(self.config['notify_selected']['notify_when_reads_message']) == 1) and (self.selected_user_activity == message_info['peer_id']):
                         playsound(self.config['notify_sounds']['notify_when_reads_message_sound'], False)
@@ -912,8 +915,7 @@ class InteractiveTelegramClient(TelegramClient):
                     print(user_data)
                 elif (msg in ['!LD', '!LE', '!LP']) and (type(entity) == User):
                     p_types = {'!LD': "diap", '!LE': "excel", '!LP': "plot"}
-                    await self.status_controller.print_user_activity(entity.id, get_display_name(entity), p_types[msg],
-                                                                     param1, (param2 == '1'))
+                    await self.status_controller.print_user_activity(entity.id, get_display_name(entity), p_types[msg], param1, (param2 == '1'))
                 elif (msg == '!M') and (type(entity) == User):
                     print('Begin message adding...')
                     await self.entity_controller.add_entity_dialog_messages_to_db(entity, None)

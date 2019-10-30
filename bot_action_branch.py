@@ -48,7 +48,7 @@ class BotActionBranch:
     async def get_commands_description_list(self, for_user_id, str_pick_text='выберите дальнейшее действие'):
         result_str = []
         curr_place = self.tg_bot_controller.get_user_place_code(for_user_id)
-        curr_rights = await self.tg_bot_controller.get_user_rights_level(for_user_id)
+        curr_rights = await self.tg_bot_controller.get_user_rights_level_realtime(for_user_id)
         commands_results = []
         commands_count = 0
         for k in self.commands.keys():
@@ -93,12 +93,12 @@ class BotActionBranch:
         msg_text = "\n".join(await self.get_commands_description_list(from_id))
         await self.send_message_to_user(from_id, msg_text)
 
-    async def on_bot_message(self, message, from_id, dialog_entity):
+    async def on_bot_message(self, message, from_id):
         if not self.is_setup_mode:
             return False
         str_from_id = str(from_id)
         if (str_from_id in self.read_once_callbacks) and self.read_once_callbacks[str_from_id]:
-            await self.read_once_callbacks[str_from_id](message, from_id, dialog_entity)
+            await self.read_once_callbacks[str_from_id](message, from_id)
             self.read_once_callbacks[str_from_id] = None
             return True
         message = message.lower()
@@ -115,7 +115,7 @@ class BotActionBranch:
             else:
                 command = self.commands[command_code]
             curr_place = self.tg_bot_controller.get_user_place_code(from_id)
-            curr_rights = await self.tg_bot_controller.get_user_rights_level(from_id)
+            curr_rights = await self.tg_bot_controller.get_user_rights_level_realtime(from_id)
             if (
                     (curr_place in command['places']) and
                     (curr_rights >= command['rights_level']) and

@@ -2,7 +2,7 @@ import traceback
 from datetime import datetime
 
 from telethon.errors import ChatIdInvalidError
-from telethon.tl.types import User, PeerUser, PeerChat, Chat, PeerChannel, Channel
+from telethon.tl.types import User, PeerUser, PeerChat, Chat, PeerChannel, Channel, InputPeerUser
 from telethon.utils import get_display_name
 
 from status_controller import StatusController
@@ -30,6 +30,8 @@ class EntityController():
                 "to_answer_sec" REAL,
                 "from_answer_sec" REAL,
                 "instagram_username" TEXT NULL,
+                "bot_hash" TEXT NULL,
+                "bot_last_version" REAL NULL,
                 "version" INTEGER NOT NULL
             );
         """)
@@ -49,9 +51,11 @@ class EntityController():
             entity_type = 'Megagroup'
 
         c = self.db_conn.cursor()
-        c.execute('INSERT INTO `entities` VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+        c.execute('INSERT INTO `entities` VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
             str(entity_id), str(entity_type), entity_name, entity_phone,
             StatusController.datetime_to_str(datetime.now()),
+            None,
+            None,
             None,
             None,
             None,
@@ -60,31 +64,67 @@ class EntityController():
         self.db_conn.commit()
 
     def get_user_instagram_name(self, user_id):
+        return self.get_entity_db_field(user_id, 'instagram_username')
+
+    def get_user_bot_last_version(self, user_id):
+        return self.get_entity_db_field(user_id, 'bot_last_version')
+
+    def save_user_bot_last_version(self, user_id, last_version):
+        return self.set_entity_db_field(user_id, 'bot_last_version', str(last_version))
+
+    def save_user_instagram_name(self, user_id, username):
+        return self.set_entity_db_field(user_id, 'instagram_username', username)
+
+    def get_user_bot_chat(self, user_id):
+        hash = self.get_entity_db_field(user_id, 'bot_hash')
+        if hash and int(hash) > 0:
+            return InputPeerUser(int(user_id), int(hash))
+        return None
+
+    def get_all_bot_users_chats(self):
+        rows = self.db_conn.execute("""
+            SELECT DISTINCT(`entity_id`) as 'entity_id' FROM `entities` 
+            WHERE `bot_hash` IS NOT NULL AND `bot_hash` != '' 
+            ORDER BY `entity_id` ASC
+        """, []).fetchall()
+        chats = []
+        for row in rows:
+            chat = self.get_user_bot_chat(row['entity_id'])
+            if chat:
+                chats.append(chat)
+        return chats
+
+    def save_user_bot_chat(self, bot_chat: InputPeerUser):
+        return self.set_entity_db_field(bot_chat.user_id, 'bot_hash', str(bot_chat.access_hash))
+
+    def get_entity_db_field(self, entity_id, field_name):
         try:
             row = self.db_conn.execute("""
                 SELECT * FROM `entities` WHERE `entity_id` = ? ORDER BY `version` DESC LIMIT 1
-            """, [str(user_id)]).fetchone()
-            if row and ('instagram_username' in row) and row['instagram_username']:
-                return row['instagram_username']
+            """, [str(entity_id)]).fetchone()
+            if row and (field_name in row) and row[field_name]:
+                return row[field_name]
         except:
             traceback.print_exc()
         return None
 
-    def set_user_instagram_name(self, user_id, username):
+    def set_entity_db_field(self, entity_id, field_name, field_value):
         try:
             row = self.db_conn.execute("""
                 SELECT * FROM `entities` WHERE `entity_id` = ? ORDER BY `version` DESC LIMIT 1
-            """, [str(user_id)]).fetchone()
+            """, [str(entity_id)]).fetchone()
             if row and ('version' in row):
                 version = int(row['version'])
+                if version < 1:
+                    version = 1
             else:
                 version = 1
             c = self.db_conn.cursor()
             c.execute("""
-                UPDATE `entities` SET `instagram_username` = ?
+                UPDATE `entities` SET `{}` = ?
                 WHERE `entity_id` = ? AND `version` = ?
-            """, [
-                username, str(user_id), str(version)
+            """.format(str(field_name)), [
+                field_value, str(entity_id), str(version)
             ])
             self.db_conn.commit()
         except:

@@ -596,7 +596,10 @@ class StatusController:
                     if only_last_dialog:
                         dialogues = [dialogues[len(dialogues) - 1]]
                     else:
-                        last_dialogue_date = self.datetime_from_str(dialogues[len(dialogues) - 1][0]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                        if len(dialogues) > 0:
+                            last_dialogue_date = self.datetime_from_str(dialogues[len(dialogues) - 1][0]['taken_at'], '%Y-%m-%d %H:%M:%S%z')
+                        else:
+                            last_dialogue_date = None
 
                     answers_me = 0
                     answers_wait_seconds_me = 0
@@ -608,6 +611,12 @@ class StatusController:
                     shortest_len = 0
                     shortest_dialog = None
 
+                    dia_me_start = 0
+                    dia_another_start = 0
+
+                    dia_me_finish = 0
+                    dia_another_finish = 0
+
                     for dial in dialogues:
                         dial_len = len(dial)
 
@@ -617,6 +626,16 @@ class StatusController:
                         if (longest_len == 0) or (dial_len > longest_len):
                             longest_len = dial_len
                             longest_dialog = dial
+
+                        if dial_len > 0:
+                            if int(dial[0]['from_id']) == self.tg_client.me_user_id:
+                                dia_me_start = dia_me_start + 1
+                            else:
+                                dia_another_start = dia_another_start + 1
+                            if int(dial[len(dial) - 1]['from_id']) == self.tg_client.me_user_id:
+                                dia_me_finish = dia_me_finish + 1
+                            else:
+                                dia_another_finish = dia_another_finish + 1
 
                         last_msg_id = None
                         last_msg_date = None
@@ -650,14 +669,15 @@ class StatusController:
                     else:
                         me_answer_time = '?'
 
-                    c = self.db_conn.cursor()
-                    c.execute(
-                        """
-                            UPDATE `entities` SET `to_answer_sec` = ?, `from_answer_sec` = ?
-                            WHERE `entity_id` = ?
-                        """, [str(answers_wait_seconds_me), str(answers_wait_seconds_another), str(user_id)]
-                    )
-                    self.db_conn.commit()
+                    if (answers_wait_seconds_me > 0) and (answers_wait_seconds_another > 0):
+                        c = self.db_conn.cursor()
+                        c.execute(
+                            """
+                                UPDATE `entities` SET `to_answer_sec` = ?, `from_answer_sec` = ?
+                                WHERE `entity_id` = ?
+                            """, [str(answers_wait_seconds_me), str(answers_wait_seconds_another), str(user_id)]
+                        )
+                        self.db_conn.commit()
 
                     longest_dates = ''
                     longest_hours = 0
@@ -669,8 +689,10 @@ class StatusController:
 
                     results.append('Сообщений '+another_name+': {0:0.001f} Kb.'.format(msg_len_another/1024))
                     results.append('Сообщений '+me_name+': {0:0.001f} Kb.'.format(msg_len_me/1024))
-                    results.append('Средняя длина сообщения '+another_name+': {0:0.01f} сим.'.format(msg_len_another / msg_another_cnt))
-                    results.append('Средняя длина сообщения '+me_name+': {0:0.01f} сим.'.format(msg_len_me / msg_me_cnt))
+                    if msg_another_cnt > 0:
+                        results.append('Средняя длина сообщения '+another_name+': {0:0.01f} сим.'.format(msg_len_another / msg_another_cnt))
+                    if msg_me_cnt > 0:
+                        results.append('Средняя длина сообщения '+me_name+': {0:0.01f} сим.'.format(msg_len_me / msg_me_cnt))
                     results.append('Самое длинное сообщение '+another_name+': ' + str(msg_another_max_len) + ' сим.')
                     results.append('Самое длинное сообщение '+me_name+': ' + str(msg_me_max_len) + ' сим.')
                     results.append('Число приветствий от '+another_name+': ' + str(me_hello))
@@ -682,12 +704,27 @@ class StatusController:
                         results.append('Сообщений в самом коротком диалоге: ' + str(shortest_len))
                         results.append('Сообщений в самом длинном диалоге: ' + str(longest_len))
                         results.append('Самый длинный диалог: ' + longest_dates + ' ({0:0.001f} сут)'.format(longest_hours))
+                        if len(dialogues) > 0:
+                            results.append('Инициатор диалога ' + another_name + ': {0:0.001f} %'.format(100 * dia_another_start / len(dialogues)))
+                            results.append('Инициатор диалога ' + me_name + ': {0:0.001f} %'.format(100 * dia_me_start / len(dialogues)))
+                            results.append('Завершитель диалога ' + another_name + ': {0:0.001f} %'.format(100 * dia_another_finish / len(dialogues)))
+                            results.append('Завершитель диалога ' + me_name + ': {0:0.001f} %'.format(100 * dia_me_finish / len(dialogues)))
                     else:
                         results.append('Сообщений в диалоге: ' + str(longest_len))
                         results.append('Продолжительность диалога: ' + longest_dates + ' ({0:0.001f} сут)'.format(longest_hours))
+                        if dia_me_start > 0:
+                            results.append('Инициатор: ' + me_name)
+                        elif dia_another_start > 0:
+                            results.append('Инициатор: ' + another_name)
+                        if dia_me_finish > 0:
+                            results.append('Завершитель: ' + me_name)
+                        elif dia_another_finish > 0:
+                            results.append('Завершитель: ' + another_name)
 
-                    results.append('В среднем ' + another_name + ' отвечает за: ' + another_answer_time)
-                    results.append('В среднем ' + me_name + ' отвечает за: ' + me_answer_time)
+                    if another_answer_time != '?':
+                        results.append('В среднем ' + another_name + ' отвечает за: ' + another_answer_time)
+                    if me_answer_time != '?':
+                        results.append('В среднем ' + me_name + ' отвечает за: ' + me_answer_time)
                     results.append('')
                     if (not date_from) and (not only_last_dialog):
                         results.append('За время активности скрипта ('+str(days_a)+' сут.):')
@@ -744,6 +781,23 @@ class StatusController:
             results.append('Чатов/мегагрупп: ' + str(len(chat_ids_week)) + ' / ' + str(len(chat_ids_month)) + ' / ' + str(len(chat_ids_all)))
             if len(user_ids_all) > 1:
                 results.append('Диалогов с пользователями: ' + str(len(user_ids_week)) + ' / ' + str(len(user_ids_month)) + ' / ' + str(len(user_ids_all)))
+            results.append('')
+
+        insta = self.tg_client.entity_controller.get_user_instagram_name(user_id)
+        if insta:
+            results.append('Инстаграм: ' + str(insta))
+
+        bot_ver = self.tg_client.entity_controller.get_user_bot_last_version(user_id)
+        if bot_ver:
+            bot_ver = float(bot_ver)
+            results.append('Использует бота, последняя версия {0:0.01f}'.format(bot_ver))
+
+        level_rt = await self.tg_client.bot_controller.get_user_rights_level_realtime(user_id)
+        level = await self.tg_client.bot_controller.get_user_rights_level(user_id)
+        if level_rt > -1:
+            results.append('Недавно использовал бота')
+        if level > -1:
+            results.append('Уровень доступа к боту: {}'.format(level))
 
         results = "\n".join(results)
         return results

@@ -28,7 +28,7 @@ class BotController(BotActionBranch):
             '3': 'pre selected',
             '4': 'only me'
         }
-        self.max_commands = 13
+        self.max_commands = 14
         self.commands = {
             '/start': {
                 'cmd': self.cmd_start,
@@ -51,7 +51,7 @@ class BotController(BotActionBranch):
             '/devices': {
                 'cmd': self.cmd_devices,
                 'places': ['bot'],
-                'rights_level': 3,
+                'rights_level': 4,
                 'desc': 'состояние подключенных устройств и управление ими.'
             },
             '/insta_check': {
@@ -67,6 +67,12 @@ class BotController(BotActionBranch):
                 'places': ['bot'],
                 'rights_level': 3,
                 'desc': 'автоответчик - начальная настройка или изменение настроек.',
+            },
+            '/new_version_send': {
+                'cmd': self.cmd_new_version_send,
+                'places': ['bot'],
+                'rights_level': 4,
+                'desc': 'отправить всем информацию о новой версии (кому ещё не отправляли).'
             },
             '/user_info': {
                 'cmd': self.cmd_user_info,
@@ -160,13 +166,14 @@ class BotController(BotActionBranch):
             ):
                 self.stop_chat_with_user(self.tg_client.me_user_id)
 
-    async def init_chat_for_user(self, user_id, entity_id=None, bot_chat_dialog=None, show_as_bot=None):
+    async def init_chat_for_user(self, user_id, entity_id=None, in_bot=False, show_as_bot=None):
         str_user_id = str(user_id)
 
         if not entity_id:
             entity_id = user_id
 
-        if bot_chat_dialog and self.tg_client.tg_bot:
+        if in_bot and self.tg_client.tg_bot:
+            bot_chat_dialog = self.tg_client.entity_controller.get_user_bot_chat(user_id)
             is_bot_dialog = True
             message_client = self.tg_client.tg_bot
         else:
@@ -312,11 +319,19 @@ class BotController(BotActionBranch):
                 return 1
         return 0
 
-    async def get_user_rights_level(self, user_id):
+    async def get_user_rights_level_realtime(self, user_id):
         str_user_id = str(user_id)
         if str_user_id not in self.users:
             return -1
         return self.users[str_user_id]['rights']
+
+    async def get_user_rights_level(self, user_id):
+        try:
+            entity = await self.tg_client.get_entity(PeerUser(int(user_id)))
+            rights = self.get_entity_rights_level(entity)
+        except:
+            rights = 0
+        return rights
 
     def text_to_bot_text(self, text, user_id, place_code=None):
         if not place_code:
@@ -337,16 +352,16 @@ class BotController(BotActionBranch):
         else:
             return text
 
-    #                from_id    from_entity_id    from_entity_type    bot_chat
-    # USER -> ME     user_id    user_id           User                None
-    # ME -> USER     me_id      user_id           User                None
-    # USER -> BOT    user_id    bot_id            Bot                 chat_obj
-    # ME -> BOT      me_id      bot_id            Bot                 chat_obj
-    async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type, bot_chat=None):
+    #                from_id    from_entity_id    from_entity_type
+    # USER -> ME     user_id    user_id           User
+    # ME -> USER     me_id      user_id           User
+    # USER -> BOT    user_id    bot_id            Bot
+    # ME -> BOT      me_id      bot_id            Bot
+    async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type):
 
         for branch in self.branches:
             if branch.is_setup_mode:
-                if await branch.on_bot_message(command_text, from_id, bot_chat):
+                if await branch.on_bot_message(command_text, from_id):
                     return
 
         if from_entity_type not in ['User', 'Bot']:
@@ -358,9 +373,7 @@ class BotController(BotActionBranch):
             from_id = from_entity_id
 
         if from_entity_type=='Bot':
-            if not bot_chat:
-                return
-            await self.init_chat_for_user(from_id, from_id, bot_chat)
+            await self.init_chat_for_user(from_id, from_id, True)
             chatbot_session_user_id = from_id
         else:
             await self.init_chat_for_user(from_id, from_entity_id)
@@ -405,6 +418,9 @@ class BotController(BotActionBranch):
         if not user_name:
             user_name = await self.tg_client.get_entity_name(user_id, 'User')
         return "["+user_name+"](tg://user?id="+str(user_id)+")"
+
+    async def cmd_new_version_send(self, to_id, params):
+        await self.tg_client.tg_bot.send_version_message_to_all_bot_users()
 
     async def cmd_user_info(self, to_id, params):
         from_id = to_id

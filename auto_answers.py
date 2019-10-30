@@ -197,7 +197,7 @@ class AutoAnswers(BotActionBranch):
             msg = msg + 'Введите дату/время'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
 
-    async def on_bot_message(self, message, from_id, dialog_entity):
+    async def on_bot_message(self, message, from_id):
         if (not self.is_setup_mode) or (self.setup_user_id != from_id) or (message == '/auto'):
             return False
         message = str(message).strip()
@@ -389,7 +389,7 @@ class AutoAnswers(BotActionBranch):
                         self.aa_not_for_users.append(check_id)
                         await self.send_message(check_id)
                         if self.aa_options['allow_bot_chat']:
-                            await self.tg_bot_controller.init_chat_for_user(check_id, check_id, None, self.aa_options['show_bot'])
+                            await self.tg_bot_controller.init_chat_for_user(check_id, check_id, False, self.aa_options['show_bot'])
         except:
             traceback.print_exc()
 
