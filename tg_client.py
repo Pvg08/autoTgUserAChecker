@@ -767,6 +767,7 @@ class InteractiveTelegramClient(TelegramClient):
         self.log_user_activity = (int(self.config['activity']['write_all_activity_to_database']) == 1)
 
         while True:
+            entity = None
             self.bot_controller.stop_chat_with_all_users()
             self.selected_user_activity = False
             dialog_count = int(self.config['messages']['initial_dialogs_limit'])
@@ -830,10 +831,17 @@ class InteractiveTelegramClient(TelegramClient):
                 print('  !q: Quits the commands window and exits.')
                 print('  !l: Logs out, terminating this session.')
                 print('  !C: Check connection & reconnect.')
+                print('  !P: pick user by username. param1 - username')
                 if not self.log_user_activity:
                     print('  !L: Log all users activities to DB-file (until !L).')
                 print()
                 i = await self.async_input('Enter user ID or a command: \n')
+                param1 = None
+                i_words = str(i).split(" ")
+                if len(i_words) > 1:
+                    i = i_words[0]
+                    param1 = i_words[1]
+
                 if (i == '!L') and not self.log_user_activity:
                     self.log_user_activity = True
                     self.print_title('Print !L to exit, or !C to reconnect...')
@@ -847,6 +855,17 @@ class InteractiveTelegramClient(TelegramClient):
                             await self.connection_check_reconnect()
                 elif i == '!C':
                     await self.connection_check_reconnect()
+                elif i == '!P':
+                    try:
+                        tmp_entity = await self.get_entity(param1)
+                    except:
+                        tmp_entity = None
+                    if tmp_entity and type(tmp_entity) == User:
+                        entity = tmp_entity
+                        i = None
+                        break
+                    else:
+                        print('Wrong entity!')
                 elif i == '!q':
                     return
                 elif i == '!l':
@@ -860,10 +879,11 @@ class InteractiveTelegramClient(TelegramClient):
                 except ValueError:
                     i = None
 
-            entity = dialogs[i]
+            if not entity:
+                entity = dialogs[i]
             if entity == "me":
                 entity = me_entity
-            else:
+            elif type(entity) != User:
                 entity = entity.entity
 
             self.sprint('Selected entity: {}'.format(get_display_name(entity)))

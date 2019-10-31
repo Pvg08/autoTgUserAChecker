@@ -38,7 +38,7 @@ class AutoAnswers(BotActionBranch):
         }
 
         self.max_commands = 5
-        self.commands = {
+        self.commands.update({
             '/auto_off': {
                 'cmd': self.cmd_off,
                 'condition': self.is_active,
@@ -67,14 +67,7 @@ class AutoAnswers(BotActionBranch):
                 'rights_level': 3,
                 'desc': 'сбросить флаги ответа пользователям'
             },
-            '/back': {
-                'cmd': self.cmd_back,
-                'condition': self.is_active,
-                'places': ['bot'],
-                'rights_level': 3,
-                'desc': 'вернуться'
-            },
-        }
+        })
         self.on_init_finish()
 
     def is_active(self, user_id):
@@ -96,9 +89,12 @@ class AutoAnswers(BotActionBranch):
             if not self.aa_user_name:
                 self.aa_user_name = self.tg_bot_controller.tg_client.me_user_name
             if (self.setup_user_id is not None) and self.active_entity_client and self.active_dialog_entity:
+                str_user_name_old = await self.tg_bot_controller.tg_client.get_entity_name(self.setup_user_id, 'User')
                 str_user_name = await self.tg_bot_controller.tg_client.get_entity_name(from_id, 'User')
                 await self.active_entity_client.send_message(self.active_dialog_entity, 'Процесс настройки прерван ' + str_user_name)
-                await message_client.send_message(dialog_entity, 'Прервали настройку ' + str_user_name)
+                self.deactivate_branch_for_user(self.setup_user_id)
+                await self.return_to_main_branch(self.setup_user_id)
+                await message_client.send_message(dialog_entity, 'Прервали настройку ' + str_user_name_old)
             self.active_entity_client = message_client
             self.active_dialog_entity = dialog_entity
             if self.aa_options['is_set']:

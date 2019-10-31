@@ -1,6 +1,9 @@
 import re
 import traceback
 
+from telethon.tl import functions
+from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction
+
 
 class BotActionBranch:
 
@@ -9,7 +12,22 @@ class BotActionBranch:
         self.max_commands = 1
         self.branches = []
         self.read_once_callbacks = {}
-        self.commands = {}
+        self.commands = {
+            '/help': {
+                'cmd': self.cmd_help,
+                'display_condition': self.is_in_main_branch,
+                'places': ['bot', 'dialog'],
+                'rights_level': 0,
+                'desc': 'краткая справка, это ее ты сейчас видишь.'
+            },
+            '/back': {
+                'cmd': self.cmd_back,
+                'display_condition': self.is_in_second_branch,
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': 'вернуться в основное меню'
+            },
+        }
         self.command_groups = {}
         self.sub_commands_forbidden = []
         self.sub_commands_forbidden_command = {
@@ -55,7 +73,8 @@ class BotActionBranch:
                     self.commands[k]['desc'] and
                     (curr_place in self.commands[k]['places']) and
                     (curr_rights >= self.commands[k]['rights_level']) and
-                    (('condition' not in self.commands[k]) or self.commands[k]['condition'](for_user_id))
+                    (('condition' not in self.commands[k]) or self.commands[k]['condition'](for_user_id)) and
+                    (('display_condition' not in self.commands[k]) or self.commands[k]['display_condition'](for_user_id))
             ):
                 if k in self.command_groups:
                     commands_results.append('')
@@ -76,6 +95,12 @@ class BotActionBranch:
 
     def is_in_current_branch(self, user_id):
         return self.tg_bot_controller.get_user_branch(user_id) == self
+
+    def is_in_main_branch(self, user_id):
+        return self.tg_bot_controller.get_user_branch(user_id) is None
+
+    def is_in_second_branch(self, user_id):
+        return self.tg_bot_controller.get_user_branch(user_id) is not None
 
     def activate_branch_for_user(self, user_id):
         if not self.tg_bot_controller.get_user_branch(user_id):
@@ -115,12 +140,11 @@ class BotActionBranch:
 
     async def run_command_text(self, command_text, from_id):
         command_parts = command_text.split(' ')
-        if (len(command_parts) > 0) and command_parts[0] and ((command_parts[0] in self.commands) or (command_parts[0] in self.sub_commands_forbidden)):
+        command_code = None
+        if (len(command_parts) > 0) and command_parts[0]:
             command_code = command_parts[0]
-            if command_code in self.sub_commands_forbidden:
-                command = self.sub_commands_forbidden_command
-            else:
-                command = self.commands[command_code]
+        if command_code and (command_parts[0] in self.commands):
+            command = self.commands[command_code]
             curr_place = self.tg_bot_controller.get_user_place_code(from_id)
             curr_rights = await self.tg_bot_controller.get_user_rights_level_realtime(from_id)
             if (
@@ -132,7 +156,9 @@ class BotActionBranch:
             ):
                 try:
                     if isinstance(command['cmd'], BotActionBranch):
-                        await command['cmd'].run_main_setup(from_id, command_parts[1:], self.tg_bot_controller.users[str(from_id)]['message_client'], self.tg_bot_controller.users[str(from_id)]['dialog_entity'])
+                        message_client = self.tg_bot_controller.users[str(from_id)]['message_client']
+                        dialog_entity = self.tg_bot_controller.users[str(from_id)]['dialog_entity']
+                        await command['cmd'].run_main_setup(from_id, command_parts[1:], message_client, dialog_entity)
                     else:
                         await command['cmd'](from_id, command_parts[1:])
                 except:
@@ -140,6 +166,9 @@ class BotActionBranch:
                     await self.send_message_to_user(from_id, 'Какая-то ошибка!')
             else:
                 await self.send_message_to_user(from_id, 'Невозможно выполнить команду!')
+            return True
+        elif command_code in self.sub_commands_forbidden:
+            await self.send_message_to_user(from_id, 'Невозможно выполнить команду!')
             return True
         return False
 
@@ -159,11 +188,31 @@ class BotActionBranch:
         message_client = self.tg_bot_controller.users[str_user_id]['message_client']
         dialog_entity = self.tg_bot_controller.users[str_user_id]['dialog_entity']
         caption = self.tg_bot_controller.text_to_bot_text(caption, user_id)
-        await message_client.send_file(dialog_entity, file_name, caption=caption, force_document=force_document)
+        return await message_client.send_file(dialog_entity, file_name, caption=caption, force_document=force_document)
+
+    async def send_typing_to_user(self, user_id, typing_begin=True):
+        str_user_id = str(user_id)
+        message_client = self.tg_bot_controller.users[str_user_id]['message_client']
+        dialog_entity = self.tg_bot_controller.users[str_user_id]['dialog_entity']
+        return await message_client(functions.messages.SetTypingRequest(
+            peer=dialog_entity,
+            action=SendMessageTypingAction() if typing_begin else SendMessageCancelAction()
+        ))
 
     async def return_to_main_branch(self, from_id):
-        self.deactivate_branch_for_user(from_id)
+        if self == self.tg_bot_controller:
+            self.tg_bot_controller.set_branch_for_user(from_id, None)
+        else:
+            self.deactivate_branch_for_user(from_id)
         await self.tg_bot_controller.cmd_help(from_id, [])
+
+    async def cmd_help(self, from_id, params):
+        result_str = []
+        if params == 'Start':
+            result_str.append('Привет, я - чат-бот (и не только)')
+        result_str = result_str + (await self.get_commands_description_list(from_id, 'Список доступных для тебя моих команд'))
+        result_str = ("\n".join(result_str))
+        await self.send_message_to_user(from_id, result_str)
 
     async def cmd_back(self, from_id, params):
         await self.return_to_main_branch(from_id)

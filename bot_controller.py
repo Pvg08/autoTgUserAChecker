@@ -29,18 +29,12 @@ class BotController(BotActionBranch):
             '4': 'only me'
         }
         self.max_commands = 14
-        self.commands = {
+        self.commands.update({
             '/start': {
                 'cmd': self.cmd_start,
                 'places': ['bot'],
                 'rights_level': 0,
                 'desc': None
-            },
-            '/help': {
-                'cmd': self.cmd_help,
-                'places': ['bot', 'dialog'],
-                'rights_level': 0,
-                'desc': 'краткая справка, это ее ты сейчас видишь.'
             },
             '/exit': {
                 'cmd': self.cmd_exit,
@@ -58,7 +52,7 @@ class BotController(BotActionBranch):
                 'cmd': None,
                 'class': InstaBranch,
                 'places': ['bot'],
-                'rights_level': 1,
+                'rights_level': 0,
                 'desc': 'управление скриптом для работы с инстаграмом.'
             },
             '/auto': {
@@ -129,13 +123,13 @@ class BotController(BotActionBranch):
                 'rights_level': 3,
                 'desc': 'статистика активности по часам за выходные.'
             }
-        }
-        self.command_groups = {
+        })
+        self.command_groups.update({
             '/user_info': 'Нижеперечисленные команды предназначены для получения статистики активности отслеживаемых пользователей.\n'
                           'После этих команд можно через пробел указать параметр - логин/ID пользователя, к которому будет применена команда. '
                           'Без параметра она применяется к тебе.',
             '/plot_today': None
-        }
+        })
         self.on_init_finish()
 
     def register_cmd_branches(self):
@@ -212,6 +206,8 @@ class BotController(BotActionBranch):
 
         if in_bot and self.tg_client.tg_bot:
             bot_chat_dialog = self.tg_client.entity_controller.get_user_bot_chat(user_id)
+            if not bot_chat_dialog and self.tg_client.tg_bot:
+                bot_chat_dialog = await self.tg_client.tg_bot.get_input_entity(PeerUser(user_id))
             is_bot_dialog = True
             message_client = self.tg_client.tg_bot
         else:
@@ -402,14 +398,6 @@ class BotController(BotActionBranch):
 
     async def cmd_start(self, from_id, params):
         await self.cmd_help(from_id, 'Start')
-
-    async def cmd_help(self, from_id, params):
-        result_str = []
-        if params == 'Start':
-            result_str.append('Привет, я - чат-бот (и не только)')
-        result_str = result_str + (await self.get_commands_description_list(from_id, 'Список доступных для тебя моих команд'))
-        result_str = ("\n".join(result_str))
-        await self.send_message_to_user(from_id, result_str)
 
     async def cmd_exit(self, from_id, params):
         await self.send_message_to_user(from_id, 'Диалог прерван')

@@ -100,6 +100,11 @@ class InteractiveTelegramBot(TelegramClient):
                     t_date = StatusController.tg_datetime_to_local_datetime(data.message.date)
                     self.tg_client.add_message_to_db(self.bot_entity_id, 'Bot', data.message.from_id, self.bot_entity_id, data.message.id, data.message.message, t_date, 0)
             bot_chat = await event.get_input_chat()
+            try:
+                ee_name = await self.tg_client.get_entity_name(bot_chat.user_id, 'User')
+            except:
+                ee_name = str(bot_chat.user_id)
+            self.tg_client.entity_controller.add_entity_db_name(bot_chat.user_id, 'User', ee_name)
             self.tg_client.entity_controller.save_user_bot_chat(bot_chat)
             if data.message.message == '/start':
                 self.tg_client.entity_controller.save_user_bot_last_version(bot_chat.user_id, float(self.tg_client.config['main']['actual_version']))

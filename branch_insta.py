@@ -27,43 +27,36 @@ class InstaBranch(BotActionBranch):
             pass
 
         self.max_commands = 4
-        self.commands = {
+        self.commands.update({
             '/insta_set_username': {
                 'cmd': self.cmd_set_username,
                 'condition': self.can_set_username,
                 'places': ['bot'],
-                'rights_level': 1,
+                'rights_level': 0,
                 'desc': 'указать имя пользователя (чтобы каждый раз не спрашивать)'
             },
             '/insta_reset_username': {
                 'cmd': self.cmd_reset_username,
                 'condition': self.can_reset_username,
                 'places': ['bot'],
-                'rights_level': 1,
+                'rights_level': 0,
                 'desc': 'сбросить имя пользователя (чтобы каждый раз спрашивать)'
             },
             '/insta_user_info': {
                 'cmd': self.cmd_user_info,
                 'condition': self.can_use_branch,
                 'places': ['bot'],
-                'rights_level': 1,
+                'rights_level': 0,
                 'desc': 'информация о пользователе'
             },
             '/insta_check_followers': {
                 'cmd': self.cmd_check_followers,
                 'condition': self.can_use_branch,
                 'places': ['bot'],
-                'rights_level': 1,
+                'rights_level': 0,
                 'desc': 'сверить списки подписчиков и подписок'
             },
-            '/back': {
-                'cmd': self.cmd_back,
-                'condition': self.is_in_current_branch,
-                'places': ['bot'],
-                'rights_level': 1,
-                'desc': 'вернуться'
-            },
-        }
+        })
         self.on_init_finish()
 
     @staticmethod
@@ -234,8 +227,10 @@ class InstaBranch(BotActionBranch):
             await self.show_current_branch_commands(from_id)
 
     async def on_info_read_username(self, message, from_id):
+        await self.send_typing_to_user(from_id, True)
         info = await self.get_user_info_by_username(from_id, message)
         if not info:
+            await self.send_typing_to_user(from_id, False)
             return
 
         if info['user']['is_private']:
@@ -264,8 +259,10 @@ class InstaBranch(BotActionBranch):
         await self.show_current_branch_commands(from_id)
 
     async def on_check_read_username(self, message, from_id):
+        await self.send_typing_to_user(from_id, True)
         info = await self.get_user_info_by_username(from_id, message)
         if not info:
+            await self.send_typing_to_user(from_id, False)
             return
 
         user_id = int(info['user']['pk'])

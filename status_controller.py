@@ -444,7 +444,7 @@ class StatusController:
             return False
         if len(string) < 2:
             return False
-        if string in ['мочь', 'раз', 'есть', 'чаща', 'лвойственность']:
+        if string in ['мочь', 'раз', 'есть', 'чаща', 'лвойственность', 'ия']:
             return False
         if allowed_types is None:
             allowed_types = ['СУЩ', 'ПРИЛ', 'ИНФ', 'ПРИЧ', 'ГЛ', 'КР_ПРИЛ', 'ПРЕДК', 'МЕЖД']
@@ -778,7 +778,8 @@ class StatusController:
                             half_words = 3
                         elif half_words > 15:
                             half_words = 15
-                        top_10 = list(map(lambda x: '**' + str(x[0]) + '** (' + str(x[1]) + ')', words[0:half_words]))
+                        top_10 = list(filter(lambda x: x[1] > 1, words[0:half_words]))
+                        top_10 = list(map(lambda x: '**' + str(x[0]) + '** (' + str(x[1]) + ')', top_10))
                         last_word, last_cnt = words[len(words) - 1]
                         last_cnt_words = map(lambda x: x[0], filter(lambda s: s[1] == last_cnt, words))
                         last_cnt_words = list(sorted(last_cnt_words, key=lambda x: len(x), reverse=True))
@@ -811,7 +812,8 @@ class StatusController:
                             half_words = 3
                         elif half_words > 15:
                             half_words = 15
-                        top_10 = list(map(lambda x: '**' + str(x[0]) + '** (' + str(x[1]) + ')', words[0:half_words]))
+                        top_10 = list(filter(lambda x: x[1] > 1, words[0:half_words]))
+                        top_10 = list(map(lambda x: '**' + str(x[0]) + '** (' + str(x[1]) + ')', top_10))
                         last_word, last_cnt = words[len(words) - 1]
                         last_cnt_words = map(lambda x: x[0], filter(lambda s: s[1] == last_cnt, words))
                         last_cnt_words = list(sorted(last_cnt_words, key=lambda x: len(x), reverse=True))
