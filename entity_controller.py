@@ -130,6 +130,17 @@ class EntityController():
         except:
             traceback.print_exc()
 
+    def set_entity_answer_sec(self, entity_id, to_answer_sec, from_answer_sec):
+        if (to_answer_sec > 0) and (from_answer_sec > 0):
+            c = self.db_conn.cursor()
+            c.execute(
+                """
+                    UPDATE `entities` SET `to_answer_sec` = ?, `from_answer_sec` = ?
+                    WHERE `entity_id` = ?
+                """, [str(to_answer_sec), str(from_answer_sec), str(entity_id)]
+            )
+            self.db_conn.commit()
+
     def channel_is_megagroup(self, channel_id):
         str_channel_id = str(channel_id)
         if str_channel_id in self.channel_megagroups:

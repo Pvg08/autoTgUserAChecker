@@ -46,7 +46,7 @@ class DialogueBranch(BotActionBranch):
             },
             '/back': {
                 'cmd': self.cmd_back,
-                'condition': self.is_setup_condition,
+                'condition': self.is_in_current_branch,
                 'places': ['bot', 'dialog'],
                 'rights_level': 1,
                 'desc': 'вернуться'

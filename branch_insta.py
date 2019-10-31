@@ -44,21 +44,21 @@ class InstaBranch(BotActionBranch):
             },
             '/insta_user_info': {
                 'cmd': self.cmd_user_info,
-                'condition': self.is_setup_condition,
+                'condition': self.can_use_branch,
                 'places': ['bot'],
                 'rights_level': 1,
                 'desc': 'информация о пользователе'
             },
             '/insta_check_followers': {
                 'cmd': self.cmd_check_followers,
-                'condition': self.is_setup_condition,
+                'condition': self.can_use_branch,
                 'places': ['bot'],
                 'rights_level': 1,
                 'desc': 'сверить списки подписчиков и подписок'
             },
             '/back': {
                 'cmd': self.cmd_back,
-                'condition': self.is_setup_condition,
+                'condition': self.is_in_current_branch,
                 'places': ['bot'],
                 'rights_level': 1,
                 'desc': 'вернуться'

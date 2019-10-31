@@ -83,9 +83,9 @@ class AutoAnswers(BotActionBranch):
     def has_users_setup(self, user_id):
         return self.aa_options['is_set'] and (len(self.aa_for_users) > 0)
 
-    def reset_aa(self):
+    def reset_aa(self, user_id):
         self.aa_options['is_set'] = False
-        self.is_setup_mode = False
+        self.deactivate_branch_for_user(user_id)
         self.setup_step = 0
         self.setup_user_id = None
         self.aa_for_users = {}
@@ -102,13 +102,13 @@ class AutoAnswers(BotActionBranch):
             self.active_entity_client = message_client
             self.active_dialog_entity = dialog_entity
             if self.aa_options['is_set']:
-                self.is_setup_mode = True
+                self.activate_branch_for_user(from_id)
                 self.setup_user_id = from_id
                 await self.next_setup_step(100)
                 return
             await self.active_entity_client.send_message(dialog_entity, 'Настраиваем автоответчик для ' + self.aa_user_name)
-            self.reset_aa()
-            self.is_setup_mode = True
+            self.reset_aa(from_id)
+            self.activate_branch_for_user(from_id)
             self.setup_user_id = from_id
             await self.next_setup_step()
 
@@ -166,7 +166,7 @@ class AutoAnswers(BotActionBranch):
             self.aa_options['notify_entity_client'] = self.active_entity_client
             self.aa_options['notify_entity_dialog'] = self.active_dialog_entity
             await self.return_to_main_branch(self.setup_user_id)
-            self.reset_aa()
+            self.reset_aa(self.setup_user_id)
             self.aa_options['is_set'] = True
         elif self.setup_step == 100:
             msg = 'Автоответчик для ' + self.aa_user_name + ' уже настроен и запущен.\n\nПараметры:\n'
@@ -198,7 +198,7 @@ class AutoAnswers(BotActionBranch):
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
 
     async def on_bot_message(self, message, from_id):
-        if (not self.is_setup_mode) or (self.setup_user_id != from_id) or (message == '/auto'):
+        if (not self.is_in_current_branch(from_id)) or (self.setup_user_id != from_id) or (message == '/auto'):
             return False
         message = str(message).strip()
         if self.setup_step == 1:
@@ -274,7 +274,7 @@ class AutoAnswers(BotActionBranch):
             await self.active_entity_client.send_message(self.active_dialog_entity, 'Сообщение изменено!')
             self.aa_options['message'] = str(self.get_config_value('chat_bot', 'bot_aa_default_message_time'))
             self.aa_options['message'] = self.aa_options['message'].replace('[datetime]', message)
-            self.is_setup_mode = False
+            self.deactivate_branch_for_user(from_id)
             self.setup_step = 0
             self.setup_user_id = None
             await self.return_to_main_branch(from_id)
@@ -409,7 +409,7 @@ class AutoAnswers(BotActionBranch):
                 self.aa_user_name = self.tg_bot_controller.tg_client.me_user_name
             if not message:
                 message = str(self.get_config_value('chat_bot', 'bot_aa_default_message'))
-            self.reset_aa()
+            self.reset_aa(user_id)
             self.aa_options = {
                 'is_set': True,
                 'from_mode': 4,
@@ -437,20 +437,20 @@ class AutoAnswers(BotActionBranch):
         self.aa_options['is_set'] = False
         await self.active_entity_client.send_message(self.active_dialog_entity, 'Автоответчик отключен!')
         await self.return_to_main_branch(from_id)
-        self.reset_aa()
+        self.reset_aa(from_id)
 
     async def cmd_restart(self, from_id, params):
         self.aa_options['is_set'] = False
         entity_client = self.active_entity_client
         entity_dialog = self.active_dialog_entity
-        self.reset_aa()
-        await self.begin_setup(from_id, entity_client, entity_dialog)
+        self.reset_aa(from_id)
+        await self.run_main_setup(from_id, [], entity_client, entity_dialog)
 
     async def cmd_reset_users(self, from_id, params):
         self.aa_for_users = {}
         self.aa_not_for_users = []
         await self.active_entity_client.send_message(self.active_dialog_entity, 'Выполнено!')
-        self.is_setup_mode = False
+        self.deactivate_branch_for_user(from_id)
         self.setup_step = 0
         self.setup_user_id = None
         await self.return_to_main_branch(from_id)
@@ -459,7 +459,7 @@ class AutoAnswers(BotActionBranch):
         await self.active_entity_client.send_message(self.active_dialog_entity, 'Понял. Оставляю включенным')
         self.setup_step = 0
         self.setup_user_id = None
-        self.is_setup_mode = False
+        self.deactivate_branch_for_user(from_id)
         await self.return_to_main_branch(from_id)
 
     async def cmd_auto_set_time(self, from_id, params):

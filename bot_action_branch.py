@@ -6,7 +6,6 @@ class BotActionBranch:
 
     def __init__(self, tg_bot_controller):
         self.tg_bot_controller = tg_bot_controller
-        self.is_setup_mode = False
         self.max_commands = 1
         self.branches = []
         self.read_once_callbacks = {}
@@ -75,8 +74,16 @@ class BotActionBranch:
         text = re.sub(' +', ' ', text)
         return text.strip().lower()
 
-    def is_setup_condition(self, user_id):
-        return self.is_setup_mode
+    def is_in_current_branch(self, user_id):
+        return self.tg_bot_controller.get_user_branch(user_id) == self
+
+    def activate_branch_for_user(self, user_id):
+        if not self.tg_bot_controller.get_user_branch(user_id):
+            self.tg_bot_controller.set_branch_for_user(user_id, self)
+
+    def deactivate_branch_for_user(self, user_id):
+        if self.is_in_current_branch(user_id):
+            self.tg_bot_controller.set_branch_for_user(user_id, None)
 
     async def read_bot_str(self, from_id, callback, message=None):
         if message:
@@ -85,7 +92,7 @@ class BotActionBranch:
 
     async def run_main_setup(self, from_id, params, message_client, dialog_entity):
         if self.tg_bot_controller.is_active_for_user(from_id):
-            self.is_setup_mode = True
+            self.activate_branch_for_user(from_id)
             await self.show_current_branch_commands(from_id)
             pass
 
@@ -94,7 +101,7 @@ class BotActionBranch:
         await self.send_message_to_user(from_id, msg_text)
 
     async def on_bot_message(self, message, from_id):
-        if not self.is_setup_mode:
+        if not self.is_in_current_branch(from_id):
             return False
         str_from_id = str(from_id)
         if (str_from_id in self.read_once_callbacks) and self.read_once_callbacks[str_from_id]:
@@ -155,7 +162,7 @@ class BotActionBranch:
         await message_client.send_file(dialog_entity, file_name, caption=caption, force_document=force_document)
 
     async def return_to_main_branch(self, from_id):
-        self.is_setup_mode = False
+        self.deactivate_branch_for_user(from_id)
         await self.tg_bot_controller.cmd_help(from_id, [])
 
     async def cmd_back(self, from_id, params):

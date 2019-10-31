@@ -141,10 +141,48 @@ class BotController(BotActionBranch):
     def register_cmd_branches(self):
         super().register_cmd_branches()
 
+    def is_active_for_user(self, entity_id, check_is_bot_dialog=None):
+        if (str(entity_id) in self.users) and self.users[str(entity_id)]['active']:
+            if check_is_bot_dialog is not None:
+                return self.users[str(entity_id)]['is_bot_dialog'] == check_is_bot_dialog
+            return True
+        return False
+
+    def get_user_place_code(self, user_id):
+        if self.is_active_for_user(user_id):
+            if self.users[str(user_id)]['is_bot_dialog']:
+                return 'bot'
+            else:
+                return 'dialog'
+        return 'nothing'
+
+    def get_user_param(self, user_id, param_name, default_value=None, default_if_inactive=True):
+        str_user_id = str(user_id)
+        if default_if_inactive:
+            if self.is_active_for_user(user_id):
+                return self.users[str_user_id][param_name]
+        elif str_user_id in self.users:
+            return self.users[str_user_id][param_name]
+        return default_value
+
+    def get_user_show_as_bot(self, user_id):
+        return self.get_user_param(user_id, 'show_as_bot')
+
+    def get_user_branch(self, user_id):
+        return self.get_user_param(user_id, 'branch')
+
+    async def get_user_rights_level_realtime(self, user_id):
+        return self.get_user_param(user_id, 'rights', -1, False)
+
     def stop_chat_with_all_users(self):
         for k in self.users.keys():
             self.users[k]['active'] = False
             self.users[k]['show_as_bot'] = None
+
+    def set_branch_for_user(self, user_id, branch):
+        str_user_id = str(user_id)
+        if str_user_id in self.users:
+            self.users[str_user_id]['branch'] = branch
 
     def stop_chat_with_user(self, user_id):
         str_user_id = str(user_id)
@@ -189,6 +227,7 @@ class BotController(BotActionBranch):
                 rights = 0
             self.users[str_user_id] = {
                 'active': True,
+                'branch': None,
                 'rights': rights,
                 'show_as_bot': show_as_bot,
                 'message_client': message_client,
@@ -204,13 +243,6 @@ class BotController(BotActionBranch):
             self.users[str_user_id]['message_client'] = message_client
             self.users[str_user_id]['is_bot_dialog'] = is_bot_dialog
             self.users[str_user_id]['dialog_entity'] = bot_chat_dialog
-
-    def is_active_for_user(self, entity_id, check_is_bot_dialog=None):
-        if (str(entity_id) in self.users) and self.users[str(entity_id)]['active']:
-            if check_is_bot_dialog is not None:
-                return self.users[str(entity_id)]['is_bot_dialog'] == check_is_bot_dialog
-            return True
-        return False
 
     def chatbot_message_response(self, message_text, user_id):
         try:
@@ -290,19 +322,6 @@ class BotController(BotActionBranch):
             return True
         return False
 
-    def get_user_place_code(self, user_id):
-        if self.is_active_for_user(user_id):
-            if self.users[str(user_id)]['is_bot_dialog']:
-                return 'bot'
-            else:
-                return 'dialog'
-        return 'nothing'
-
-    def get_user_show_as_bot(self, user_id):
-        if self.is_active_for_user(user_id):
-            return self.users[str(user_id)]['show_as_bot']
-        return None
-
     def get_entity_rights_level(self, entity, max_level_user_ids=None):
         if not max_level_user_ids:
             max_level_user_ids = [self.tg_client.me_user_id]
@@ -318,12 +337,6 @@ class BotController(BotActionBranch):
             elif entity.contact:
                 return 1
         return 0
-
-    async def get_user_rights_level_realtime(self, user_id):
-        str_user_id = str(user_id)
-        if str_user_id not in self.users:
-            return -1
-        return self.users[str_user_id]['rights']
 
     async def get_user_rights_level(self, user_id):
         try:
@@ -359,10 +372,11 @@ class BotController(BotActionBranch):
     # ME -> BOT      me_id      bot_id            Bot
     async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type):
 
-        for branch in self.branches:
-            if branch.is_setup_mode:
-                if await branch.on_bot_message(command_text, from_id):
-                    return
+        user_branch = self.get_user_branch(from_id)
+
+        if user_branch and (user_branch in self.branches):
+            if await user_branch.on_bot_message(command_text, from_id):
+                return
 
         if from_entity_type not in ['User', 'Bot']:
             self.stop_chat_with_user(from_entity_id)
