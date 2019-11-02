@@ -1,11 +1,12 @@
 import re
 import traceback
 
+from telethon.client import MessageParseMethods
 from telethon.errors import MessageNotModifiedError
 from telethon.tl import functions
 from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction, ReplyKeyboardMarkup, KeyboardButtonRow, \
     KeyboardButtonCallback, KeyboardButton, ReplyInlineMarkup, KeyboardButtonSwitchInline, KeyboardButtonBuy, \
-    ReplyKeyboardForceReply, Message
+    ReplyKeyboardForceReply, Message, MessageEntityTextUrl
 
 
 class BotActionBranch:
@@ -113,7 +114,9 @@ class BotActionBranch:
 
         return button_rows
 
-    async def get_commands_description_list(self, for_user_id, str_pick_text='выберите дальнейшее действие'):
+    async def get_commands_description_list(self, for_user_id, str_pick_text=None):
+        if str_pick_text is None:
+            str_pick_text = 'Выберите дальнейшее действие'
         result_str = []
         curr_place = self.tg_bot_controller.get_user_place_code(for_user_id)
         curr_rights = await self.tg_bot_controller.get_user_rights_level_realtime(for_user_id)
@@ -173,10 +176,13 @@ class BotActionBranch:
         if self.is_in_current_branch(user_id):
             self.tg_bot_controller.set_branch_for_user(user_id, None)
 
-    async def read_bot_str(self, from_id, callback, message=None):
+    async def read_bot_str(self, from_id, callback, message=None, params=None):
         if message:
-            await self.send_message_to_user(from_id, message)
-        self.read_once_callbacks[str(from_id)] = callback
+            await self.send_message_to_user(from_id, message, do_set_next=False)
+        self.read_once_callbacks[from_id] = {
+            'callback': callback,
+            'params': params
+        }
 
     async def run_main_setup(self, from_id, params):
         if self.tg_bot_controller.is_active_for_user(from_id):
@@ -184,18 +190,17 @@ class BotActionBranch:
             await self.show_current_branch_commands(from_id)
             pass
 
-    async def show_current_branch_commands(self, from_id):
-        msg_text = "\n".join(await self.get_commands_description_list(from_id))
+    async def show_current_branch_commands(self, from_id, pre_text=None):
+        msg_text = "\n".join(await self.get_commands_description_list(from_id, pre_text))
         buttons = await self.get_commands_buttons_list(from_id)
         await self.send_message_to_user(from_id, msg_text, buttons=buttons, set_active=True)
 
     async def on_bot_message(self, message, from_id):
         if not self.is_in_current_branch(from_id):
             return False
-        str_from_id = str(from_id)
-        if (str_from_id in self.read_once_callbacks) and self.read_once_callbacks[str_from_id]:
-            await self.read_once_callbacks[str_from_id](message, from_id)
-            self.read_once_callbacks[str_from_id] = None
+        if (from_id in self.read_once_callbacks) and self.read_once_callbacks[from_id]:
+            await self.read_once_callbacks[from_id]['callback'](message, from_id, self.read_once_callbacks[from_id]['params'])
+            self.read_once_callbacks[from_id] = None
             return True
         message = message.lower()
         if await self.run_command_text(message, from_id):
@@ -234,30 +239,66 @@ class BotActionBranch:
             return True
         return False
 
-    async def send_message_to_user(self, user_id, message, link_preview=False, buttons=None, set_active=False):
+    async def remove_message_buttons(self, user_id, message_id):
         if not self.tg_bot_controller.is_active_for_user(user_id):
             return
         str_user_id = str(user_id)
         message_client = self.tg_bot_controller.users[str_user_id]['message_client']
         dialog_entity = self.tg_bot_controller.users[str_user_id]['dialog_entity']
-        message = self.tg_bot_controller.text_to_bot_text(message, user_id)
-        last_active = None
-        if set_active:
-            last_active = self.tg_bot_controller.get_user_message_id(user_id, True)
-            last_msg_id = self.tg_bot_controller.get_user_message_id(user_id, False)
-            if last_active and (last_active != last_msg_id):
-                await message_client.delete_messages(dialog_entity, [last_active])
-                last_active = None
-        if not last_active:
-            message = await message_client.send_message(dialog_entity, message, link_preview=link_preview, buttons=buttons)
-            if message and (type(message) == Message):
-                self.tg_bot_controller.set_message_for_user(user_id, message.id, set_active)
-        else:
-            try:
-                message = await message_client.edit_message(dialog_entity, last_active, message, link_preview=link_preview, buttons=buttons)
-            except MessageNotModifiedError:
-                return True
-                pass
+        message = await message_client.get_messages(dialog_entity, ids=message_id)
+        if not message:
+            return
+        if type(message) != Message:
+            if len(message) == 0:
+                return
+            message = message[0]
+        if type(message) != Message:
+            return
+        try:
+            if message.entities and type(message.entities) == list and len(message.entities) > 0 and type(message.entities[0]) == MessageEntityTextUrl:
+                link_preview = True
+            else:
+                link_preview = False
+            msg_text = message.text
+            await message_client.edit_message(dialog_entity, message_id, text=msg_text, link_preview=link_preview, buttons=None)
+        except MessageNotModifiedError:
+            return
+
+    async def send_message_to_user(self, user_id, message, link_preview=False, buttons=None, set_active=False, do_set_next=True):
+        if not self.tg_bot_controller.is_active_for_user(user_id):
+            return
+        try:
+            str_user_id = str(user_id)
+            message_client = self.tg_bot_controller.users[str_user_id]['message_client']
+            dialog_entity = self.tg_bot_controller.users[str_user_id]['dialog_entity']
+            message = self.tg_bot_controller.text_to_bot_text(message, user_id)
+            last_active = None
+            last_next = self.tg_bot_controller.get_user_next_message_id(user_id)
+            set_next = False
+            if set_active:
+                last_active = self.tg_bot_controller.get_user_message_id(user_id, True)
+                last_msg_id = self.tg_bot_controller.get_user_message_id(user_id, False)
+                if last_active and (last_active != last_msg_id):
+                    await message_client.delete_messages(dialog_entity, [last_active])
+                    last_active = None
+            if last_next:
+                await self.remove_message_buttons(user_id, last_next)
+                self.tg_bot_controller.set_message_for_user(user_id, None, False, True)
+            if not last_active:
+                if (not buttons) and (not set_active) and do_set_next:
+                    buttons = [KeyboardButtonCallback('Продолжить', '/help'.encode())]
+                    set_next = True
+                message = await message_client.send_message(dialog_entity, message, link_preview=link_preview, buttons=buttons)
+                if message and (type(message) == Message):
+                    self.tg_bot_controller.set_message_for_user(user_id, message.id, set_active, set_next)
+            else:
+                try:
+                    message = await message_client.edit_message(dialog_entity, last_active, message, link_preview=link_preview, buttons=buttons)
+                except MessageNotModifiedError:
+                    return True
+                    pass
+        except:
+            traceback.print_exc()
         return True if message else False
 
     async def send_file_to_user(self, user_id, file_name, caption, force_document=False):
@@ -267,8 +308,10 @@ class BotActionBranch:
         message_client = self.tg_bot_controller.users[str_user_id]['message_client']
         dialog_entity = self.tg_bot_controller.users[str_user_id]['dialog_entity']
         caption = self.tg_bot_controller.text_to_bot_text(caption, user_id)
-        sended = await message_client.send_file(dialog_entity, file_name, caption=caption, force_document=force_document)
-        return True if sended else False
+        message = await message_client.send_file(dialog_entity, file_name, caption=caption, force_document=force_document)
+        if message and (type(message) == Message):
+            self.tg_bot_controller.set_message_for_user(user_id, message.id, False, False)
+        return True if message else False
 
     async def send_typing_to_user(self, user_id, typing_begin=True):
         str_user_id = str(user_id)
@@ -287,13 +330,11 @@ class BotActionBranch:
         await self.tg_bot_controller.cmd_help(from_id, [])
 
     async def cmd_help(self, from_id, params):
-        result_str = []
+        text = []
         if params == 'Start':
-            result_str.append('Привет, я - чат-бот (и не только)')
-        result_str = result_str + (await self.get_commands_description_list(from_id, 'Список доступных для тебя моих команд'))
-        result_str = ("\n".join(result_str))
-        buttons = await self.get_commands_buttons_list(from_id)
-        await self.send_message_to_user(from_id, result_str, buttons=buttons, set_active=True)
+            text.append('Привет, я - чат-бот (и не только)')
+        text.append('Список доступных для тебя моих команд')
+        await self.show_current_branch_commands(from_id, "\n".join(text))
 
     async def cmd_back(self, from_id, params):
         await self.return_to_main_branch(from_id)

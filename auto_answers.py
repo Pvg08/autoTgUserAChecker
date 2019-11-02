@@ -134,7 +134,7 @@ class AutoAnswers(BotActionBranch):
         self.setup_user_id = from_id
         return True
 
-    async def show_current_branch_commands(self, from_id):
+    async def show_current_branch_commands(self, from_id, pre_text=None):
         if self.aa_options['is_set']:
             msg = 'Автоответчик для ' + self.tg_bot_controller.tg_client.me_user_name + ' настроен и запущен!\n\nПараметры:\n'
             msg = msg + '```'
@@ -154,14 +154,12 @@ class AutoAnswers(BotActionBranch):
                         msg = msg + 'Сообщение отправлено'
             else:
                 msg = msg + 'Отсутствуют'
-            msg = msg + '\n\n'
-            msg = msg + "\n".join(await self.get_commands_description_list(from_id))
-            msg_text = msg.strip()
-            buttons = await self.get_commands_buttons_list(from_id)
+            msg = msg + '\n'
         else:
-            msg_text = "\n".join(await self.get_commands_description_list(from_id))
-            buttons = await self.get_commands_buttons_list(from_id)
-        await self.send_message_to_user(from_id, msg_text, buttons=buttons, set_active=True)
+            msg = ''
+        msg_text = msg + "\n".join(await self.get_commands_description_list(from_id, pre_text))
+        buttons = await self.get_commands_buttons_list(from_id)
+        await self.send_message_to_user(from_id, msg_text.strip(), buttons=buttons, set_active=True)
 
     async def cmd_auto_start(self, from_id, params):
         if not await self.start_user_setup(from_id):
@@ -217,13 +215,12 @@ class AutoAnswers(BotActionBranch):
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
         elif self.setup_step == 8:
             msg = '**Настройка завершена!!!**\n\n'
-            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
             self.aa_options['notify_entity_client'] = self.active_entity_client
             self.aa_options['notify_entity_dialog'] = self.active_dialog_entity
             self.reset_aa()
             self.reset_user_setup()
             self.aa_options['is_set'] = True
-            await self.show_current_branch_commands(from_user_id)
+            await self.send_message_to_user(from_user_id, msg.strip())
         elif self.setup_step == 200:
             msg = '**Настройка даты/времени прибытия**\n\n'
             msg = msg + 'оно будет указано ботом в начальном сообщении вида:\n'
@@ -304,11 +301,10 @@ class AutoAnswers(BotActionBranch):
             self.aa_options['message'] = message
             await self.next_setup_step()
         elif self.setup_step == 200:
-            await self.active_entity_client.send_message(self.active_dialog_entity, 'Сообщение изменено!')
             self.aa_options['message'] = str(self.get_config_value('chat_bot', 'bot_aa_default_message_time'))
             self.aa_options['message'] = self.aa_options['message'].replace('[datetime]', message)
             self.reset_user_setup()
-            await self.show_current_branch_commands(from_id)
+            await self.send_message_to_user(from_id, 'Сообщение изменено!')
         return True
 
     async def send_message(self, to_id):

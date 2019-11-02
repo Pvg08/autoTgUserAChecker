@@ -26,14 +26,14 @@ class InstaBranch(BotActionBranch):
         except ImportError:
             pass
 
-        self.max_commands = 4
+        self.max_commands = 5
         self.commands.update({
             '/insta_set_username': {
                 'cmd': self.cmd_set_username,
                 'condition': self.can_set_username,
                 'bot_button': {
                     'title': 'Указать имя',
-                    'position': [1, 0],
+                    'position': [2, 0],
                 },
                 'places': ['bot'],
                 'rights_level': 0,
@@ -44,7 +44,7 @@ class InstaBranch(BotActionBranch):
                 'condition': self.can_reset_username,
                 'bot_button': {
                     'title': 'Сбросить имя',
-                    'position': [1, 0],
+                    'position': [2, 0],
                 },
                 'places': ['bot'],
                 'rights_level': 0,
@@ -55,7 +55,7 @@ class InstaBranch(BotActionBranch):
                 'condition': self.can_use_branch,
                 'bot_button': {
                     'title': 'Информация',
-                    'position': [0, 0],
+                    'position': [1, 0],
                 },
                 'places': ['bot'],
                 'rights_level': 0,
@@ -66,11 +66,22 @@ class InstaBranch(BotActionBranch):
                 'condition': self.can_use_branch,
                 'bot_button': {
                     'title': 'Сверка подписчиков',
+                    'position': [0, 0],
+                },
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': 'сверить списки подписчиков и подписок чтобы найти пользователей, не подписанных на вас из тех, на которых вы подписаны'
+            },
+            '/insta_check_followings': {
+                'cmd': self.cmd_check_followings,
+                'condition': self.can_use_branch,
+                'bot_button': {
+                    'title': 'Сверка подписок',
                     'position': [0, 1],
                 },
                 'places': ['bot'],
                 'rights_level': 0,
-                'desc': 'сверить списки подписчиков и подписок'
+                'desc': 'сверить списки подписчиков и подписок чтобы найти пользователей, на которых вы не подписаны из тех, что подписанных на вас'
             },
         })
         self.on_init_finish()
@@ -203,46 +214,49 @@ class InstaBranch(BotActionBranch):
                 user_id = None
             if not user_id:
                 await self.send_message_to_user(from_id, 'Пользователь с именем "'+username+'" не найден!')
-                await self.show_current_branch_commands(from_id)
                 return None
             print('Instagram: User ' + username + ' was found...')
             return info
         except:
             traceback.print_exc()
             await self.send_message_to_user(from_id, 'Пользователь с именем "' + username + '" не найден!')
-            await self.show_current_branch_commands(from_id)
         return None
 
     async def cmd_user_info(self, from_id, params):
         uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
         if uname:
-            await self.on_info_read_username(uname, from_id)
+            await self.on_info_read_username(uname, from_id, None)
         else:
             await self.read_bot_str(from_id, self.on_info_read_username, 'Введите имя пользователя Instagram:')
 
     async def cmd_check_followers(self, from_id, params):
         uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
         if uname:
-            await self.on_check_read_username(uname, from_id)
+            await self.on_check_read_username(uname, from_id, "forward")
         else:
-            await self.read_bot_str(from_id, self.on_check_read_username, 'Введите имя пользователя Instagram:')
+            await self.read_bot_str(from_id, self.on_check_read_username, 'Введите имя пользователя Instagram:', "forward")
+
+    async def cmd_check_followings(self, from_id, params):
+        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
+        if uname:
+            await self.on_check_read_username(uname, from_id, "back")
+        else:
+            await self.read_bot_str(from_id, self.on_check_read_username, 'Введите имя пользователя Instagram:', "back")
 
     async def cmd_set_username(self, from_id, params):
         await self.read_bot_str(from_id, self.on_check_set_username, 'Введите имя пользователя Instagram:')
 
     async def cmd_reset_username(self, from_id, params):
         self.tg_bot_controller.tg_client.entity_controller.save_user_instagram_name(from_id, None)
-        await self.send_message_to_user(from_id, 'Выполнено!')
-        await self.show_current_branch_commands(from_id)
+        await self.send_message_to_user(from_id, 'Сброс имени инстаграм-аккаунта выполнен!')
 
-    async def on_check_set_username(self, message, from_id):
+    async def on_check_set_username(self, message, from_id, params):
         info = await self.get_user_info_by_username(from_id, message)
         if info:
             self.tg_bot_controller.tg_client.entity_controller.save_user_instagram_name(from_id, info['user']['username'])
-            await self.send_message_to_user(from_id, 'Выполнено!')
-            await self.show_current_branch_commands(from_id)
+            await self.send_message_to_user(from_id, 'Установка имени инстаграм-аккаунта выполнена!')
 
-    async def on_info_read_username(self, message, from_id):
+    async def on_info_read_username(self, message, from_id, params):
         await self.send_typing_to_user(from_id, True)
         info = await self.get_user_info_by_username(from_id, message)
         if not info:
@@ -259,6 +273,8 @@ class InstaBranch(BotActionBranch):
             pic_name = str(info['user']['profile_pic_id'])
 
         results = [
+            '**Информация о пользователе инстаграм:**',
+            '',
             'Имя пользователя: ' + str(info['user']['username']),
             'Полное имя: ' + str(info['user']['full_name']),
             'Биография: ' + str(info['user']['biography']),
@@ -272,9 +288,8 @@ class InstaBranch(BotActionBranch):
         results = "\n".join(results)
 
         await self.send_message_to_user(from_id, results, link_preview=True)
-        await self.show_current_branch_commands(from_id)
 
-    async def on_check_read_username(self, message, from_id):
+    async def on_check_read_username(self, message, from_id, params):
         await self.send_typing_to_user(from_id, True)
         info = await self.get_user_info_by_username(from_id, message)
         if not info:
@@ -287,7 +302,10 @@ class InstaBranch(BotActionBranch):
         followers = self.get_all_followers(user_id)
         followings = self.get_all_following(user_id)
 
-        results = []
+        results = [
+            '**Сверка подписчиков и подписок инстаграм {}:**'.format(user_name),
+            '',
+        ]
 
         if (len(followers) > 0) and (len(followings) > 0):
             results.append('Число подписчиков: ' + str(len(followers)))
@@ -306,19 +324,20 @@ class InstaBranch(BotActionBranch):
             followers_not_following = list(map(lambda x: followers_names[str(x)], filter(lambda x: x not in following_ids, followers_ids)))
             following_not_followers = list(map(lambda x: following_names[str(x)], filter(lambda x: x not in followers_ids, following_ids)))
 
-            if len(following_not_followers) == 0:
-                results.append('Все, на кого подписан ' + user_name + ', подписаны и на него')
+            if params == "forward":
+                if len(following_not_followers) == 0:
+                    results.append('Все, на кого подписан ' + user_name + ', подписаны и на него')
+                else:
+                    results.append('Не все, на кого подписан ' + user_name + ', подписаны и на него, а именно:')
+                    results = results + following_not_followers
+                results.append('')
             else:
-                results.append('Не все, на кого подписан ' + user_name + ', подписаны и на него, а именно:')
-                results = results + following_not_followers
-            results.append('')
-
-            if len(followers_not_following) == 0:
-                results.append(user_name + ' подписан на всех своих подписчиков')
-            else:
-                results.append(user_name + ' подписан не на всех своих подписчиков, а именно:')
-                results = results + followers_not_following
-            results.append('')
+                if len(followers_not_following) == 0:
+                    results.append(user_name + ' подписан на всех своих подписчиков')
+                else:
+                    results.append(user_name + ' подписан не на всех своих подписчиков, а именно:')
+                    results = results + followers_not_following
+                results.append('')
         else:
             if info['user']['is_private']:
                 results.append('У этого пользователя закрытый профиль! Прочитать списки подписок и подписчиков не получится!')
@@ -328,4 +347,3 @@ class InstaBranch(BotActionBranch):
         results = "\n".join(results)
 
         await self.send_message_to_user(from_id, results)
-        await self.show_current_branch_commands(from_id)

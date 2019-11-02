@@ -30,7 +30,7 @@ class BotController(BotActionBranch):
             '3': 'pre selected',
             '4': 'only me'
         }
-        self.max_commands = 6
+        self.max_commands = 5
         self.commands.update({
             '/start': {
                 'cmd': self.cmd_start,
@@ -78,7 +78,7 @@ class BotController(BotActionBranch):
                 'class': DialogueBranch,
                 'places': ['bot', 'dialog'],
                 'bot_button': {
-                    'title': 'Диалоги - статистика',
+                    'title': 'Диалоги',
                     'position': [4, 0],
                 },
                 'rights_level': 2,
@@ -88,22 +88,12 @@ class BotController(BotActionBranch):
                 'class': ActivityBranch,
                 'places': ['bot', 'dialog'],
                 'bot_button': {
-                    'title': 'Активность - графики и листинги',
+                    'title': 'Активность пользователей',
                     'position': [4, 1],
                 },
                 'rights_level': 2,
-                'desc': 'статистика активности пользователей - графики.'
+                'desc': 'статистика активности пользователей - графики и листинги.'
             },
-            '/user_info': {
-                'cmd': self.cmd_user_info,
-                'places': ['bot', 'dialog'],
-                'rights_level': 2,
-                'desc': 'информация о пользователе.'
-            },
-        })
-        self.command_groups.update({
-            '/user_info': 'После нижеуказанных команд можно через пробел указать параметр - логин/ID пользователя, к которому будет применена команда. '
-                          'Без параметра она применяется к тебе.'
         })
         self.on_init_finish()
 
@@ -146,6 +136,9 @@ class BotController(BotActionBranch):
     def get_user_message_id(self, user_id, get_active=True):
         return self.get_user_param(user_id, 'active_message_id' if get_active else 'last_message_id')
 
+    def get_user_next_message_id(self, user_id):
+        return self.get_user_param(user_id, 'last_next_message_id')
+
     async def get_user_rights_level_realtime(self, user_id):
         return self.get_user_param(user_id, 'rights', -1, False)
 
@@ -159,12 +152,15 @@ class BotController(BotActionBranch):
         if str_user_id in self.users:
             self.users[str_user_id]['branch'] = branch
 
-    def set_message_for_user(self, user_id, message_id, set_active=True):
+    def set_message_for_user(self, user_id, message_id, set_active=True, set_next=False):
         str_user_id = str(user_id)
         if str_user_id in self.users:
             if set_active:
                 self.users[str_user_id]['active_message_id'] = message_id
-            self.users[str_user_id]['last_message_id'] = message_id
+            if set_next:
+                self.users[str_user_id]['last_next_message_id'] = message_id
+            if message_id:
+                self.users[str_user_id]['last_message_id'] = message_id
 
     def stop_chat_with_user(self, user_id):
         str_user_id = str(user_id)
@@ -214,6 +210,7 @@ class BotController(BotActionBranch):
                 'branch': None,
                 'active_message_id': None,
                 'last_message_id': None,
+                'last_next_message_id': None,
                 'rights': rights,
                 'show_as_bot': show_as_bot,
                 'message_client': message_client,
@@ -358,8 +355,6 @@ class BotController(BotActionBranch):
     # ME -> BOT      me_id      bot_id            Bot
     async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type):
 
-        print('bot_command')
-
         user_branch = self.get_user_branch(from_id)
 
         if user_branch and (user_branch in self.branches):
@@ -407,63 +402,3 @@ class BotController(BotActionBranch):
             if type(entity) == User:
                 from_id = entity.id
         return from_id
-
-    async def cmd_user_info(self, to_id, params):
-        from_id = to_id
-        for_id = await self.get_from_id_param(to_id, params)
-        entity = await self.tg_client.get_entity(for_id)
-        res = []
-        res.append('ID: ' + str(entity.id))
-        if entity.username:
-            res.append('Логин: ' + str(entity.username))
-        if entity.phone:
-            res.append('Телефон: ' + str(entity.phone))
-        if entity.first_name:
-            res.append('Имя: ' + str(entity.first_name))
-        if entity.last_name:
-            res.append('Фамилия: ' + str(entity.last_name))
-        res.append('')
-        if to_id != for_id:
-            if entity.mutual_contact:
-                res.append('У тебя в контактах, ты у него в контактах')
-            elif entity.contact:
-                res.append('У тебя в контактах')
-        last_date = None
-        if type(entity.status) == UserStatusOnline:
-            status_name = 'Онлайн'
-        elif type(entity.status) == UserStatusOffline:
-            status_name = 'Оффлайн'
-            last_date = StatusController.tg_datetime_to_local_datetime(entity.status.was_online)
-            last_date = StatusController.datetime_to_str(last_date)
-        elif entity.status:
-            status_name = 'Не отслеживается (' + entity.status.to_dict()['_'] + ')'
-        elif entity.bot:
-            status_name = 'Бот'
-        else:
-            status_name = 'Неизвестно'
-        res.append('Статус: ' + status_name)
-        if last_date:
-            res.append('Был в сети: ' + last_date)
-        res.append('')
-        sessions_cnt = self.tg_client.status_controller.get_user_activity_sessions_count(entity.id)
-        if sessions_cnt > 0:
-            res.append('Активность отслеживается (сохранено сессий: ' + str(sessions_cnt) + ')')
-        else:
-            res.append('Активность не отслеживается')
-        m_types = self.tg_client.status_controller.get_user_messages_entity_types(entity.id)
-        if m_types and len(m_types) > 0:
-            res.append('Сообщения отслеживаются (' + (", ".join(m_types)) + ')')
-        else:
-            res.append('Сообщения не отслеживается')
-
-        stat_msg = await self.tg_client.status_controller.get_user_aa_statistics_text(entity.id, False)
-        if stat_msg:
-            res.append('')
-            res.append(stat_msg)
-
-        stat_msg = await self.tg_client.status_controller.get_stat_user_messages(entity.id, from_id)
-        if stat_msg:
-            res.append('')
-            res.append(stat_msg)
-
-        await self.send_message_to_user(to_id, "\n".join(res))

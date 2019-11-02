@@ -74,14 +74,13 @@ class DialogueBranch(BotActionBranch):
             return True
         return False
 
-    async def on_pick_username(self, message, from_id):
+    async def on_pick_username(self, message, from_id, params):
         if not self.me_picker_cmd:
             return
         for_id = await self.tg_bot_controller.get_from_id_param(from_id, [message])
         if for_id == self.tg_bot_controller.tg_client.me_user_id:
             self.me_picker_cmd = None
             await self.send_message_to_user(from_id, 'Недопустимый выбор!')
-            await self.show_current_branch_commands(from_id)
             return
         await self.me_picker_cmd(from_id, for_id)
         self.me_picker_cmd = None
@@ -99,7 +98,6 @@ class DialogueBranch(BotActionBranch):
         await self.send_typing_to_user(from_id, True)
         res = await self.tg_bot_controller.tg_client.status_controller.get_me_dialog_statistics(for_id)
         await self.send_message_to_user(from_id, "\n".join(res['results']))
-        await self.show_current_branch_commands(from_id)
 
     async def cmd_dialogue_week(self, from_id, params):
         if await self.pick_user_if_need(from_id, params, self.cmd_dialogue_week):
@@ -108,7 +106,6 @@ class DialogueBranch(BotActionBranch):
         await self.send_typing_to_user(from_id, True)
         res = await self.tg_bot_controller.tg_client.status_controller.get_me_dialog_statistics(for_id, datetime.now() - timedelta(days=7), 'за неделю')
         await self.send_message_to_user(from_id, "\n".join(res['results']))
-        await self.show_current_branch_commands(from_id)
 
     async def cmd_dialogue_month(self, from_id, params):
         if await self.pick_user_if_need(from_id, params, self.cmd_dialogue_month):
@@ -117,7 +114,6 @@ class DialogueBranch(BotActionBranch):
         await self.send_typing_to_user(from_id, True)
         res = await self.tg_bot_controller.tg_client.status_controller.get_me_dialog_statistics(for_id, datetime.now() - timedelta(days=31), 'за месяц')
         await self.send_message_to_user(from_id, "\n".join(res['results']))
-        await self.show_current_branch_commands(from_id)
 
     async def cmd_dialogue_6month(self, from_id, params):
         if await self.pick_user_if_need(from_id, params, self.cmd_dialogue_6month):
@@ -126,7 +122,6 @@ class DialogueBranch(BotActionBranch):
         await self.send_typing_to_user(from_id, True)
         res = await self.tg_bot_controller.tg_client.status_controller.get_me_dialog_statistics(for_id, datetime.now() - timedelta(days=183), 'за 6 месяцев')
         await self.send_message_to_user(from_id, "\n".join(res['results']))
-        await self.show_current_branch_commands(from_id)
 
     async def cmd_dialogue_last(self, from_id, params):
         if await self.pick_user_if_need(from_id, params, self.cmd_dialogue_last):
@@ -140,4 +135,3 @@ class DialogueBranch(BotActionBranch):
             return
         res = await self.tg_bot_controller.tg_client.status_controller.get_me_dialog_statistics(for_id, last_date - timedelta(hours=1), 'за последний диалог', True)
         await self.send_message_to_user(from_id, "\n".join(res['results']))
-        await self.show_current_branch_commands(from_id)
