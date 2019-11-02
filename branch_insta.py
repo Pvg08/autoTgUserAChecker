@@ -31,6 +31,10 @@ class InstaBranch(BotActionBranch):
             '/insta_set_username': {
                 'cmd': self.cmd_set_username,
                 'condition': self.can_set_username,
+                'bot_button': {
+                    'title': 'Указать имя',
+                    'position': [1, 0],
+                },
                 'places': ['bot'],
                 'rights_level': 0,
                 'desc': 'указать имя пользователя (чтобы каждый раз не спрашивать)'
@@ -38,6 +42,10 @@ class InstaBranch(BotActionBranch):
             '/insta_reset_username': {
                 'cmd': self.cmd_reset_username,
                 'condition': self.can_reset_username,
+                'bot_button': {
+                    'title': 'Сбросить имя',
+                    'position': [1, 0],
+                },
                 'places': ['bot'],
                 'rights_level': 0,
                 'desc': 'сбросить имя пользователя (чтобы каждый раз спрашивать)'
@@ -45,6 +53,10 @@ class InstaBranch(BotActionBranch):
             '/insta_user_info': {
                 'cmd': self.cmd_user_info,
                 'condition': self.can_use_branch,
+                'bot_button': {
+                    'title': 'Информация',
+                    'position': [0, 0],
+                },
                 'places': ['bot'],
                 'rights_level': 0,
                 'desc': 'информация о пользователе'
@@ -52,6 +64,10 @@ class InstaBranch(BotActionBranch):
             '/insta_check_followers': {
                 'cmd': self.cmd_check_followers,
                 'condition': self.can_use_branch,
+                'bot_button': {
+                    'title': 'Сверка подписчиков',
+                    'position': [0, 1],
+                },
                 'places': ['bot'],
                 'rights_level': 0,
                 'desc': 'сверить списки подписчиков и подписок'

@@ -17,30 +17,50 @@ class DialogueBranch(BotActionBranch):
             '/dialogue_all': {
                 'cmd': self.cmd_dialogue_all,
                 'places': ['bot', 'dialog'],
+                'bot_button': {
+                    'title': 'За всё время',
+                    'position': [0, 0],
+                },
                 'rights_level': 2,
                 'desc': 'статистика за всё время'
             },
             '/dialogue_6month': {
                 'cmd': self.cmd_dialogue_6month,
                 'places': ['bot', 'dialog'],
+                'bot_button': {
+                    'title': '6 месяцев',
+                    'position': [0, 1],
+                },
                 'rights_level': 2,
                 'desc': 'статистика за 6 месяцев'
             },
             '/dialogue_month': {
                 'cmd': self.cmd_dialogue_month,
                 'places': ['bot', 'dialog'],
+                'bot_button': {
+                    'title': '1 месяц',
+                    'position': [0, 2],
+                },
                 'rights_level': 2,
                 'desc': 'статистика за месяц'
             },
             '/dialogue_week': {
                 'cmd': self.cmd_dialogue_week,
                 'places': ['bot', 'dialog'],
+                'bot_button': {
+                    'title': 'неделя',
+                    'position': [1, 0],
+                },
                 'rights_level': 2,
                 'desc': 'статистика за неделю'
             },
             '/dialogue_last': {
                 'cmd': self.cmd_dialogue_last,
                 'places': ['bot', 'dialog'],
+                'bot_button': {
+                    'title': 'прошлый диалог',
+                    'position': [1, 1],
+                },
                 'rights_level': 2,
                 'desc': 'статистика за прошлый диалог'
             },

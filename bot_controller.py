@@ -9,8 +9,10 @@ from telethon.tl.types import PeerUser, User, UserStatusOnline, UserStatusOfflin
 
 from bot_action_branch import BotActionBranch
 from auto_answers import AutoAnswers
+from branch_activity import ActivityBranch
 from branch_dialogue import DialogueBranch
 from branch_insta import InstaBranch
+from branch_tools import ToolsBranch
 from status_controller import StatusController
 
 
@@ -28,7 +30,7 @@ class BotController(BotActionBranch):
             '3': 'pre selected',
             '4': 'only me'
         }
-        self.max_commands = 14
+        self.max_commands = 6
         self.commands.update({
             '/start': {
                 'cmd': self.cmd_start,
@@ -42,31 +44,55 @@ class BotController(BotActionBranch):
                 'rights_level': 0,
                 'desc': 'конец диалога'
             },
-            '/devices': {
-                'cmd': self.cmd_devices,
-                'places': ['bot'],
-                'rights_level': 4,
-                'desc': 'состояние подключенных устройств и управление ими.'
-            },
             '/insta_check': {
-                'cmd': None,
                 'class': InstaBranch,
                 'places': ['bot'],
+                'bot_button': {
+                    'title': 'Инстаграм',
+                    'position': [1, 0],
+                },
                 'rights_level': 0,
                 'desc': 'управление скриптом для работы с инстаграмом.'
             },
             '/auto': {
-                'cmd': None,
                 'class': AutoAnswers,
                 'places': ['bot'],
+                'bot_button': {
+                    'title': 'Автоответчик',
+                    'position': [2, 0],
+                },
                 'rights_level': 3,
                 'desc': 'автоответчик - начальная настройка или изменение настроек.',
             },
-            '/new_version_send': {
-                'cmd': self.cmd_new_version_send,
+            '/tools': {
+                'class': ToolsBranch,
                 'places': ['bot'],
-                'rights_level': 4,
-                'desc': 'отправить всем информацию о новой версии (кому ещё не отправляли).'
+                'bot_button': {
+                    'title': 'Утилиты',
+                    'position': [3, 0],
+                },
+                'rights_level': 1,
+                'desc': 'всякие разные утилиты.'
+            },
+            '/user_dialogue_info': {
+                'class': DialogueBranch,
+                'places': ['bot', 'dialog'],
+                'bot_button': {
+                    'title': 'Диалоги - статистика',
+                    'position': [4, 0],
+                },
+                'rights_level': 2,
+                'desc': 'статистика диалогов с пользователем [me_user].'
+            },
+            '/user_activity_info': {
+                'class': ActivityBranch,
+                'places': ['bot', 'dialog'],
+                'bot_button': {
+                    'title': 'Активность - графики и листинги',
+                    'position': [4, 1],
+                },
+                'rights_level': 2,
+                'desc': 'статистика активности пользователей - графики.'
             },
             '/user_info': {
                 'cmd': self.cmd_user_info,
@@ -74,66 +100,12 @@ class BotController(BotActionBranch):
                 'rights_level': 2,
                 'desc': 'информация о пользователе.'
             },
-            '/user_dialogue_info': {
-                'cmd': None,
-                'class': DialogueBranch,
-                'places': ['bot', 'dialog'],
-                'rights_level': 2,
-                'desc': 'статистика диалогов с пользователем [me_user].'
-            },
-            '/activity_today': {
-                'cmd': self.cmd_activity_today,
-                'places': ['bot', 'dialog'],
-                'rights_level': 2,
-                'desc': 'сессии за сегодня.'
-            },
-            '/plot_today': {
-                'cmd': self.cmd_plot_today,
-                'places': ['bot', 'dialog'],
-                'rights_level': 3,
-                'desc': 'график активности за сегодня.'
-            },
-            '/plot_week': {
-                'cmd': self.cmd_plot_week,
-                'places': ['bot', 'dialog'],
-                'rights_level': 3,
-                'desc': 'график активности за неделю.'
-            },
-            '/plot_all': {
-                'cmd': self.cmd_plot_all,
-                'places': ['bot', 'dialog'],
-                'rights_level': 3,
-                'desc': 'график активности за всё время.'
-            },
-            '/plot_hours': {
-                'cmd': self.cmd_plot_hours,
-                'places': ['bot', 'dialog'],
-                'rights_level': 3,
-                'desc': 'статистика активности по часам за всё время.'
-            },
-            '/plot_hours_weekday': {
-                'cmd': self.cmd_plot_hours_weekday,
-                'places': ['bot', 'dialog'],
-                'rights_level': 3,
-                'desc': 'статистика активности по часам за будние дни.'
-            },
-            '/plot_hours_weekend': {
-                'cmd': self.cmd_plot_hours_weekend,
-                'places': ['bot', 'dialog'],
-                'rights_level': 3,
-                'desc': 'статистика активности по часам за выходные.'
-            }
         })
         self.command_groups.update({
-            '/user_info': 'Нижеперечисленные команды предназначены для получения статистики активности отслеживаемых пользователей.\n'
-                          'После этих команд можно через пробел указать параметр - логин/ID пользователя, к которому будет применена команда. '
-                          'Без параметра она применяется к тебе.',
-            '/plot_today': None
+            '/user_info': 'После нижеуказанных команд можно через пробел указать параметр - логин/ID пользователя, к которому будет применена команда. '
+                          'Без параметра она применяется к тебе.'
         })
         self.on_init_finish()
-
-    def register_cmd_branches(self):
-        super().register_cmd_branches()
 
     def is_active_for_user(self, entity_id, check_is_bot_dialog=None):
         if (str(entity_id) in self.users) and self.users[str(entity_id)]['active']:
@@ -165,6 +137,15 @@ class BotController(BotActionBranch):
     def get_user_branch(self, user_id):
         return self.get_user_param(user_id, 'branch')
 
+    def get_user_message_client(self, user_id):
+        return self.get_user_param(user_id, 'message_client')
+
+    def get_user_dialog_entity(self, user_id):
+        return self.get_user_param(user_id, 'dialog_entity')
+
+    def get_user_message_id(self, user_id, get_active=True):
+        return self.get_user_param(user_id, 'active_message_id' if get_active else 'last_message_id')
+
     async def get_user_rights_level_realtime(self, user_id):
         return self.get_user_param(user_id, 'rights', -1, False)
 
@@ -177,6 +158,13 @@ class BotController(BotActionBranch):
         str_user_id = str(user_id)
         if str_user_id in self.users:
             self.users[str_user_id]['branch'] = branch
+
+    def set_message_for_user(self, user_id, message_id, set_active=True):
+        str_user_id = str(user_id)
+        if str_user_id in self.users:
+            if set_active:
+                self.users[str_user_id]['active_message_id'] = message_id
+            self.users[str_user_id]['last_message_id'] = message_id
 
     def stop_chat_with_user(self, user_id):
         str_user_id = str(user_id)
@@ -224,6 +212,8 @@ class BotController(BotActionBranch):
             self.users[str_user_id] = {
                 'active': True,
                 'branch': None,
+                'active_message_id': None,
+                'last_message_id': None,
                 'rights': rights,
                 'show_as_bot': show_as_bot,
                 'message_client': message_client,
@@ -368,6 +358,8 @@ class BotController(BotActionBranch):
     # ME -> BOT      me_id      bot_id            Bot
     async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type):
 
+        print('bot_command')
+
         user_branch = self.get_user_branch(from_id)
 
         if user_branch and (user_branch in self.branches):
@@ -415,18 +407,6 @@ class BotController(BotActionBranch):
             if type(entity) == User:
                 from_id = entity.id
         return from_id
-
-    async def user_link(self, user_id, user_name=None):
-        if not user_name:
-            user_name = await self.tg_client.get_entity_name(user_id, 'User')
-        return "["+user_name+"](tg://user?id="+str(user_id)+")"
-
-    async def cmd_new_version_send(self, from_id, params):
-        sent_count = await self.tg_client.tg_bot.send_version_message_to_all_bot_users()
-        if sent_count == 0:
-            await self.send_message_to_user(from_id, 'Некому отправлять!')
-        else:
-            await self.send_message_to_user(from_id, 'Отправлено сообщений: {}'.format(sent_count))
 
     async def cmd_user_info(self, to_id, params):
         from_id = to_id
@@ -487,73 +467,3 @@ class BotController(BotActionBranch):
             res.append(stat_msg)
 
         await self.send_message_to_user(to_id, "\n".join(res))
-
-    async def send_activity_message(self, for_id, send_to_id, date_activity=None, result_only_time=False, a_type="plot_img", img_caption="График активности [user]"):
-        for_name = await self.tg_client.get_entity_name(for_id)
-        status_results = await self.tg_client.status_controller.print_user_activity(for_id, for_name, a_type, date_activity, result_only_time)
-        status_results = status_results.strip().splitlines()
-        last_str = ''
-        if a_type=="plot_img":
-            last_str = str(status_results.pop())
-        if last_str and last_str.startswith(self.get_config_value('main', 'files_folder') + "/"):
-            u_link = await self.user_link(for_id, for_name)
-            await self.send_file_to_user(send_to_id, last_str, img_caption.replace('[user]', u_link), True)
-        else:
-            full_results = "\n".join(status_results)
-            if (len(full_results) + 8) >= 4096:
-                status_results.reverse()
-                buff_len = 1
-                while buff_len > 0:
-                    buff = []
-                    buff_len = 0
-                    while (len(status_results) > 0) and (buff_len + len(status_results[len(status_results) - 1]) + 8) < 4096:
-                        last_s = status_results.pop()
-                        buff.append(last_s)
-                        buff_len = buff_len + len(last_s) + 1
-                    if buff_len > 0:
-                        await self.send_message_to_user(send_to_id, '```\n' + ("\n".join(buff)) + '\n```')
-            else:
-                await self.send_message_to_user(send_to_id, '```\n' + full_results + '\n```')
-
-    async def cmd_activity_today(self, from_id, params):
-        to_id = from_id
-        from_id = await self.get_from_id_param(from_id, params)
-        now_str = StatusController.datetime_to_str(datetime.now(),'%Y-%m-%d')
-        await self.send_activity_message(from_id, to_id, now_str, True, "diap")
-
-    async def cmd_plot_today(self, from_id, params):
-        to_id = from_id
-        from_id = await self.get_from_id_param(from_id, params)
-        now_str = StatusController.datetime_to_str(datetime.now(),'%Y-%m-%d')
-        await self.send_activity_message(from_id, to_id, now_str, img_caption="График активности [user] за сегодня")
-
-    async def cmd_plot_all(self, from_id, params):
-        to_id = from_id
-        from_id = await self.get_from_id_param(from_id, params)
-        await self.send_activity_message(from_id, to_id, None, img_caption="График активности [user] за всё время")
-
-    async def cmd_plot_week(self, from_id, params):
-        to_id = from_id
-        from_id = await self.get_from_id_param(from_id, params)
-        date_str1 = StatusController.datetime_to_str(datetime.now() + timedelta(days=-6), '%Y-%m-%d')
-        date_str2 = StatusController.datetime_to_str(datetime.now() + timedelta(days=1), '%Y-%m-%d')
-        await self.send_activity_message(from_id, to_id, (date_str1, date_str2), img_caption="График активности [user] за неделю")
-
-    async def cmd_plot_hours(self, from_id, params):
-        to_id = from_id
-        from_id = await self.get_from_id_param(from_id, params)
-        await self.send_activity_message(from_id, to_id, None, True, img_caption="График активности [user] по часам")
-
-    async def cmd_plot_hours_weekend(self, from_id, params):
-        to_id = from_id
-        from_id = await self.get_from_id_param(from_id, params)
-        await self.send_activity_message(from_id, to_id, "weekend", True, img_caption="График активности [user] по часам за выходные")
-
-    async def cmd_plot_hours_weekday(self, from_id, params):
-        to_id = from_id
-        from_id = await self.get_from_id_param(from_id, params)
-        await self.send_activity_message(from_id, to_id, "weekday", True, img_caption="График активности [user] по часам за будние дни")
-
-    async def cmd_devices(self, from_id, params):
-        await self.send_message_to_user(from_id, 'Не хватает прав на выполнение команды!')
-

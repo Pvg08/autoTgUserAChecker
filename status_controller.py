@@ -518,7 +518,7 @@ class StatusController:
                 )
             rows = list(res.fetchall())
 
-            me_name = await self.tg_client.get_entity_name(self.tg_client.me_user_id, 'User')
+            me_name = self.tg_client.me_user_entity_name
             another_name = await self.tg_client.get_entity_name(user_id, 'User')
             dialog_name = me_name + ' <-> ' + another_name
 

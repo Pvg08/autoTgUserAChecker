@@ -132,6 +132,7 @@ class InteractiveTelegramClient(TelegramClient):
         self.last_update = None
         self.dialogs_init_complete = False
         self.me_user_id = None
+        self.me_user_entity_name = None
         self.me_user_name = None
         self.me_last_activity = datetime.now()
 
@@ -755,6 +756,7 @@ class InteractiveTelegramClient(TelegramClient):
     async def run(self):
         me_entity = await self.get_entity("me")
         self.me_user_id = me_entity.id
+        self.me_user_entity_name = await self.get_entity_name(self.me_user_id, 'User')
         self.me_user_name = get_display_name(me_entity)
 
         # self.add_event_handler(self.message_handler, event=events.NewMessage)
