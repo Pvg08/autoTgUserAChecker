@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta, datetime
 
 from telethon.tl.types import UserStatusOnline, UserStatusOffline
@@ -9,8 +10,8 @@ from status_controller import StatusController
 
 class ActivityBranch(BotActionBranch):
 
-    def __init__(self, tg_bot_controller):
-        super().__init__(tg_bot_controller)
+    def __init__(self, tg_bot_controller, branch_parent, branch_code=None):
+        super().__init__(tg_bot_controller, branch_parent, branch_code)
 
         self.me_picker_cmd = None
 
@@ -128,6 +129,8 @@ class ActivityBranch(BotActionBranch):
                         buff_len = buff_len + len(last_s) + 1
                     if buff_len > 0:
                         await self.send_message_to_user(send_to_id, '```\n' + ("\n".join(buff)) + '\n```')
+                        if len(status_results) > 0:
+                            await asyncio.sleep(0.75)
             else:
                 await self.send_message_to_user(send_to_id, '```\n' + full_results + '\n```')
 

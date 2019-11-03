@@ -113,6 +113,7 @@ class InteractiveTelegramClient(TelegramClient):
 
         self.config = config
         self.db_conn = self.get_db('client_data.db')
+        self.on_timer_callbacks = []
         self.entity_controller = EntityController(self)
 
         if str(config['tg_bot']['session_fname']) and str(config['tg_bot']['token']):
@@ -162,6 +163,10 @@ class InteractiveTelegramClient(TelegramClient):
         for idx, col in enumerate(cursor.description):
             d[col[0]] = row[idx]
         return d
+
+    def register_on_timer(self, callback_f):
+        if callback_f not in self.on_timer_callbacks:
+            self.on_timer_callbacks.append(callback_f)
 
     def get_db(self, db_name):
         conn = sqlite3.connect(db_name, check_same_thread=False)
@@ -749,7 +754,8 @@ class InteractiveTelegramClient(TelegramClient):
                     if me_entity_data['status'] and (me_entity_data['status']['_'] == 'UserStatusOnline'):
                         self.me_last_activity = datetime.now()
                     self.last_update = datetime.now()
-                await self.aa_controller.on_timer()
+                for callback_f in self.on_timer_callbacks:
+                    await callback_f()
         except:
             traceback.print_exc()
 

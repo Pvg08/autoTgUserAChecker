@@ -19,7 +19,7 @@ from status_controller import StatusController
 class BotController(BotActionBranch):
 
     def __init__(self, tg_client):
-        super().__init__(self)
+        super().__init__(self, None, None)
         self.tg_client = tg_client
         self.bot_answer_format_text = str(self.get_config_value('chat_bot', 'bot_answer_format'))
         self.users = {}
@@ -151,6 +151,7 @@ class BotController(BotActionBranch):
         str_user_id = str(user_id)
         if str_user_id in self.users:
             self.users[str_user_id]['branch'] = branch
+            self.users[str_user_id]['branch_path'] = branch.get_branch_path() if branch else '/'
 
     def set_message_for_user(self, user_id, message_id, set_active=True, set_next=False):
         str_user_id = str(user_id)
@@ -208,6 +209,7 @@ class BotController(BotActionBranch):
             self.users[str_user_id] = {
                 'active': True,
                 'branch': None,
+                'branch_path': '/',
                 'active_message_id': None,
                 'last_message_id': None,
                 'last_next_message_id': None,
@@ -356,8 +358,7 @@ class BotController(BotActionBranch):
     async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type):
 
         user_branch = self.get_user_branch(from_id)
-
-        if user_branch and (user_branch in self.branches):
+        if user_branch:
             if await user_branch.on_bot_message(command_text, from_id):
                 return
 

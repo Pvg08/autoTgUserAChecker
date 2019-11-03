@@ -29,10 +29,15 @@ class EntityController():
                 "taken_at" DATETIME NOT NULL,
                 "to_answer_sec" REAL,
                 "from_answer_sec" REAL,
-                "instagram_username" TEXT NULL,
-                "bot_hash" TEXT NULL,
-                "bot_last_version" REAL NULL,
                 "version" INTEGER NOT NULL
+            );
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS "users_options" (
+                "entity_id" INTEGER NOT NULL,
+                "option_name" TEXT NOT NULL,
+                "option_value" TEXT NULL,
+                PRIMARY KEY("entity_id","option_name")
             );
         """)
 
@@ -51,12 +56,12 @@ class EntityController():
             entity_type = 'Megagroup'
 
         c = self.db_conn.cursor()
-        c.execute('INSERT INTO `entities` VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-            str(entity_id), str(entity_type), entity_name, entity_phone,
+        c.execute('INSERT INTO `entities` VALUES(?, ?, ?, ?, ?, ?, ?, ?)', [
+            str(entity_id),
+            str(entity_type),
+            entity_name,
+            entity_phone,
             StatusController.datetime_to_str(datetime.now()),
-            None,
-            None,
-            None,
             None,
             None,
             str(version)
@@ -64,27 +69,21 @@ class EntityController():
         self.db_conn.commit()
 
     def get_user_instagram_name(self, user_id):
-        return self.get_entity_db_field(user_id, 'instagram_username')
+        return self.get_entity_db_option(user_id, 'instagram_username')
 
     def get_user_bot_last_version(self, user_id):
-        return self.get_entity_db_field(user_id, 'bot_last_version')
-
-    def save_user_bot_last_version(self, user_id, last_version):
-        return self.set_entity_db_field(user_id, 'bot_last_version', str(last_version))
-
-    def save_user_instagram_name(self, user_id, username):
-        return self.set_entity_db_field(user_id, 'instagram_username', username)
+        return self.get_entity_db_option(user_id, 'bot_last_version')
 
     def get_user_bot_chat(self, user_id):
-        hash = self.get_entity_db_field(user_id, 'bot_hash')
-        if hash and int(hash) > 0:
+        hash = self.get_entity_db_option(user_id, 'bot_hash')
+        if hash and int(hash) != 0:
             return InputPeerUser(int(user_id), int(hash))
         return None
 
     def get_all_bot_users_chats(self):
         rows = self.db_conn.execute("""
-            SELECT DISTINCT(`entity_id`) as 'entity_id' FROM `entities` 
-            WHERE `bot_hash` IS NOT NULL AND `bot_hash` != '' 
+            SELECT DISTINCT(`entity_id`) as 'entity_id' FROM `users_options` 
+            WHERE `option_name` == 'bot_hash' AND `option_value` IS NOT NULL AND `option_value` != '' 
             ORDER BY `entity_id` ASC
         """, []).fetchall()
         chats = []
@@ -94,8 +93,40 @@ class EntityController():
                 chats.append(chat)
         return chats
 
+    def save_user_bot_last_version(self, user_id, last_version):
+        return self.set_entity_db_option(user_id, 'bot_last_version', str(last_version))
+
+    def save_user_instagram_name(self, user_id, username):
+        return self.set_entity_db_option(user_id, 'instagram_username', username)
+
     def save_user_bot_chat(self, bot_chat: InputPeerUser):
-        return self.set_entity_db_field(bot_chat.user_id, 'bot_hash', str(bot_chat.access_hash))
+        return self.set_entity_db_option(bot_chat.user_id, 'bot_hash', str(bot_chat.access_hash))
+
+    def get_entity_db_option(self, entity_id, option_name):
+        try:
+            row = self.db_conn.execute("""
+                SELECT `option_value` FROM `users_options` 
+                WHERE `entity_id` = ? AND `option_name` = ? 
+                LIMIT 1
+            """, [str(entity_id), str(option_name)]).fetchone()
+            if row and ('option_value' in row) and row['option_value']:
+                return row['option_value']
+        except:
+            traceback.print_exc()
+        return None
+
+    def set_entity_db_option(self, entity_id, option_name, option_value):
+        try:
+            if self.get_entity_db_option(entity_id, option_name) == option_value:
+                return
+            c = self.db_conn.cursor()
+            c.execute("""
+                REPLACE INTO `users_options`(`entity_id`, `option_name`, `option_value`)
+                VALUES(?, ?, ?)
+            """, [str(entity_id), str(option_name), option_value])
+            self.db_conn.commit()
+        except:
+            traceback.print_exc()
 
     def get_entity_db_field(self, entity_id, field_name):
         try:

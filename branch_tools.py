@@ -7,8 +7,8 @@ from bot_action_branch import BotActionBranch
 
 class ToolsBranch(BotActionBranch):
 
-    def __init__(self, tg_bot_controller):
-        super().__init__(tg_bot_controller)
+    def __init__(self, tg_bot_controller, branch_parent, branch_code=None):
+        super().__init__(tg_bot_controller, branch_parent, branch_code)
 
         self.max_commands = 3
         self.commands.update({

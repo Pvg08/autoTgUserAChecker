@@ -1,3 +1,4 @@
+import asyncio
 import codecs
 import json
 import traceback
@@ -9,8 +10,11 @@ from bot_action_branch import BotActionBranch
 
 class InstaBranch(BotActionBranch):
 
-    def __init__(self, tg_bot_controller):
-        super().__init__(tg_bot_controller)
+    def __init__(self, tg_bot_controller, branch_parent, branch_code=None):
+        super().__init__(tg_bot_controller, branch_parent, branch_code)
+
+        self.use_timer = True
+        self.last_stories_check_time = None
 
         self.api = None
         self.has_insta_lib = False
@@ -26,41 +30,8 @@ class InstaBranch(BotActionBranch):
         except ImportError:
             pass
 
-        self.max_commands = 5
+        self.max_commands = 8
         self.commands.update({
-            '/insta_set_username': {
-                'cmd': self.cmd_set_username,
-                'condition': self.can_set_username,
-                'bot_button': {
-                    'title': 'Указать имя',
-                    'position': [2, 0],
-                },
-                'places': ['bot'],
-                'rights_level': 0,
-                'desc': 'указать имя пользователя (чтобы каждый раз не спрашивать)'
-            },
-            '/insta_reset_username': {
-                'cmd': self.cmd_reset_username,
-                'condition': self.can_reset_username,
-                'bot_button': {
-                    'title': 'Сбросить имя',
-                    'position': [2, 0],
-                },
-                'places': ['bot'],
-                'rights_level': 0,
-                'desc': 'сбросить имя пользователя (чтобы каждый раз спрашивать)'
-            },
-            '/insta_user_info': {
-                'cmd': self.cmd_user_info,
-                'condition': self.can_use_branch,
-                'bot_button': {
-                    'title': 'Информация',
-                    'position': [1, 0],
-                },
-                'places': ['bot'],
-                'rights_level': 0,
-                'desc': 'информация о пользователе'
-            },
             '/insta_check_followers': {
                 'cmd': self.cmd_check_followers,
                 'condition': self.can_use_branch,
@@ -83,8 +54,93 @@ class InstaBranch(BotActionBranch):
                 'rights_level': 0,
                 'desc': 'сверить списки подписчиков и подписок чтобы найти пользователей, на которых вы не подписаны из тех, что подписанных на вас'
             },
+            '/insta_user_info': {
+                'cmd': self.cmd_user_info,
+                'condition': self.can_use_branch,
+                'bot_button': {
+                    'title': 'Информация',
+                    'position': [1, 0],
+                },
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': 'информация о пользователе'
+            },
+            '/insta_user_locations': {
+                'cmd': self.cmd_user_locations,
+                'condition': self.can_use_branch,
+                'bot_button': {
+                    'title': 'Локации',
+                    'position': [1, 1],
+                },
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': 'все локации, отмеченные пользователем'
+            },
+            '/insta_user_active_commenters': {
+                'cmd': self.cmd_user_active_commenters,
+                'condition': self.can_use_branch,
+                'bot_button': {
+                    'title': 'Активные комментаторы',
+                    'position': [2, 0],
+                },
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': 'активные в комментах пользователи'
+            },
+            '/insta_user_active_likers': {
+                'cmd': self.cmd_user_active_likers,
+                'condition': self.can_use_branch,
+                'bot_button': {
+                    'title': 'Активные лайкеры',
+                    'position': [2, 1],
+                },
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': 'активно ставящие лайки пользователи'
+            },
+            '/insta_set_stories_users': {
+                'cmd': self.cmd_set_stories_users,
+                'condition': self.can_use_branch,
+                'bot_button': {
+                    'title': 'Источники историй',
+                    'position': [3, 0],
+                },
+                'places': ['bot'],
+                'rights_level': 3,
+                'desc': 'указать список пользователей - источников stories. У этих пользователей будет проводиться регулярное выкачивание stories'
+            },
+            '/insta_set_username': {
+                'cmd': self.cmd_set_username,
+                'condition': self.can_set_username,
+                'bot_button': {
+                    'title': 'Указать имя',
+                    'position': [3, 1],
+                },
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': 'указать имя пользователя (чтобы каждый раз не спрашивать)'
+            },
+            '/insta_reset_username': {
+                'cmd': self.cmd_reset_username,
+                'condition': self.can_reset_username,
+                'bot_button': {
+                    'title': 'Сбросить имя',
+                    'position': [3, 2],
+                },
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': 'сбросить имя пользователя (чтобы каждый раз спрашивать)'
+            },
         })
         self.on_init_finish()
+
+    async def show_current_branch_commands(self, from_id, pre_text=None):
+        if pre_text is None:
+            pre_text = self.default_pick_action_text
+        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
+        if uname:
+            pre_text = "\nВыбранный пользователь инстаграм: **" + uname + "**\n\n" + pre_text
+        await super().show_current_branch_commands(from_id, pre_text)
 
     @staticmethod
     def to_json(python_object):
@@ -164,6 +220,14 @@ class InstaBranch(BotActionBranch):
             return False
         return self.can_use_branch(user_id)
 
+    async def on_timer(self):
+        if not self.has_insta_lib:
+            return
+        if self.last_stories_check_time and (datetime.now() - self.last_stories_check_time).total_seconds() < 555:
+            return
+        self.last_stories_check_time = datetime.now()
+        pass
+
     @staticmethod
     def get_user_tg_text(user):
         base_str = '[' + user['username'] + '](https://www.instagram.com/'+user['username']+'/)'
@@ -173,31 +237,45 @@ class InstaBranch(BotActionBranch):
             base_str = base_str + ' (закрытый)'
         return base_str
 
-    def get_all_followers(self, user_id):
+    def get_all_followers(self, api_user_id):
         followers = []
         uuid = self.api.generate_uuid()
-        results = self.api.user_followers(user_id, uuid, query='')
+        results = self.api.user_followers(api_user_id, uuid, query='')
         followers.extend(results.get('users', []))
         next_max_id = results.get('next_max_id')
         while next_max_id:
-            results = self.api.user_followers(user_id, uuid, max_id=next_max_id)
+            results = self.api.user_followers(api_user_id, uuid, max_id=next_max_id)
             followers.extend(results.get('users', []))
             print('%d followers loaded.' % len(followers))
             next_max_id = results.get('next_max_id')
         return followers
 
-    def get_all_following(self, user_id):
+    def get_all_following(self, api_user_id):
         following = []
         uuid = self.api.generate_uuid()
-        results = self.api.user_following(user_id, uuid, query='')
+        results = self.api.user_following(api_user_id, uuid, query='')
         following.extend(results.get('users', []))
         next_max_id = results.get('next_max_id')
         while next_max_id:
-            results = self.api.user_following(user_id, uuid, max_id=next_max_id)
+            results = self.api.user_following(api_user_id, uuid, max_id=next_max_id)
             following.extend(results.get('users', []))
             print('%d following loaded.' % len(following))
             next_max_id = results.get('next_max_id')
         return following
+
+    async def get_all_feed(self, api_user_id, max_count, from_id):
+        feed_items = []
+        results = self.api.user_feed(api_user_id)
+        feed_items.extend(results.get('items', []))
+        next_max_id = results.get('next_max_id')
+        while next_max_id and (len(feed_items) < max_count):
+            await asyncio.sleep(0.4)
+            await self.resend_typing_to_user(from_id)
+            results = self.api.user_feed(api_user_id, max_id=next_max_id)
+            feed_items.extend(results.get('items', []))
+            print('%d feed_items loaded.' % len(feed_items))
+            next_max_id = results.get('next_max_id')
+        return feed_items
 
     async def get_user_info_by_username(self, from_id, username):
         self.do_login_if_need()
@@ -222,12 +300,36 @@ class InstaBranch(BotActionBranch):
             await self.send_message_to_user(from_id, 'Пользователь с именем "' + username + '" не найден!')
         return None
 
+    async def cmd_set_stories_users(self, from_id, params):
+        pass
+
     async def cmd_user_info(self, from_id, params):
         uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
         if uname:
             await self.on_info_read_username(uname, from_id, None)
         else:
             await self.read_bot_str(from_id, self.on_info_read_username, 'Введите имя пользователя Instagram:')
+
+    async def cmd_user_locations(self, from_id, params):
+        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
+        if uname:
+            await self.on_locations_read_username(uname, from_id, None)
+        else:
+            await self.read_bot_str(from_id, self.on_locations_read_username, 'Введите имя пользователя Instagram:')
+
+    async def cmd_user_active_commenters(self, from_id, params):
+        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
+        if uname:
+            await self.on_active_commenters_read_username(uname, from_id, None)
+        else:
+            await self.read_bot_str(from_id, self.on_active_commenters_read_username, 'Введите имя пользователя Instagram:')
+
+    async def cmd_user_active_likers(self, from_id, params):
+        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
+        if uname:
+            await self.on_active_likers_read_username(uname, from_id, None)
+        else:
+            await self.read_bot_str(from_id, self.on_active_likers_read_username, 'Введите имя пользователя Instagram:')
 
     async def cmd_check_followers(self, from_id, params):
         uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
@@ -273,7 +375,7 @@ class InstaBranch(BotActionBranch):
             pic_name = str(info['user']['profile_pic_id'])
 
         results = [
-            '**Информация о пользователе инстаграм:**',
+            '**Информация о пользователе инстаграм {}:**'.format(str(info['user']['username'])),
             '',
             'Имя пользователя: ' + str(info['user']['username']),
             'Полное имя: ' + str(info['user']['full_name']),
@@ -283,6 +385,7 @@ class InstaBranch(BotActionBranch):
             'Число медиа: ' + str(info['user']['media_count']),
             'Число подписчиков: ' + str(info['user']['follower_count']),
             'Число подписок: ' + str(info['user']['following_count']),
+            'Число тегов в подписках: ' + str(info['user']['following_tag_count']),
             'Фото профиля: [' + pic_name + '](' + str(info['user']['profile_pic_url']) + ')'
         ]
         results = "\n".join(results)
@@ -303,7 +406,7 @@ class InstaBranch(BotActionBranch):
         followings = self.get_all_following(user_id)
 
         results = [
-            '**Сверка подписчиков и подписок инстаграм {}:**'.format(user_name),
+            '**Сверка подписчиков и подписок пользователя инстаграм {}:**'.format(user_name),
             '',
         ]
 
@@ -346,4 +449,179 @@ class InstaBranch(BotActionBranch):
 
         results = "\n".join(results)
 
+        await self.send_message_to_user(from_id, results)
+
+    async def on_locations_read_username(self, message, from_id, params):
+        await self.send_typing_to_user(from_id, True)
+        info = await self.get_user_info_by_username(from_id, message)
+        if not info:
+            await self.send_typing_to_user(from_id, False)
+            return
+
+        await self.send_message_to_user(from_id, 'Процесс может занять некоторое время, подождите...', do_set_next=False)
+        await self.send_typing_to_user(from_id)
+
+        user_id = int(info['user']['pk'])
+        feed_items = await self.get_all_feed(user_id, 500, from_id)
+
+        results = []
+        results.append('Загружено медиа: **{}**'.format(len(feed_items)))
+        results.append('')
+
+        locations = []
+
+        for f_item in feed_items:
+            if ('location' in f_item) and f_item['location']:
+                location_str = []
+                if f_item['location']['name']:
+                    location_str.append(f_item['location']['name'])
+                if f_item['location']['city']:
+                    location_str.append(f_item['location']['city'])
+                if f_item['location']['address']:
+                    location_str.append(f_item['location']['address'])
+                location_str = (", ".join(location_str)) + '\n'
+                if location_str not in locations:
+                    locations.append(location_str)
+
+        if len(locations) > 0:
+            results.append('Список локаций из медиа:')
+            results.append('')
+            results.append('')
+            results = results + list(sorted(locations))
+            results = "\n".join(results)
+        else:
+            results.append('Локаций не обнаружено!')
+
+        await self.send_message_to_user(from_id, results)
+
+    async def on_active_commenters_read_username(self, message, from_id, params):
+        await self.send_typing_to_user(from_id, True)
+        info = await self.get_user_info_by_username(from_id, message)
+        if not info:
+            await self.send_typing_to_user(from_id, False)
+            return
+
+        await self.send_message_to_user(from_id, 'Процесс может занять продолжительное время, подождите...', do_set_next=False)
+        await self.send_typing_to_user(from_id)
+
+        user_id = int(info['user']['pk'])
+        feed_items = await self.get_all_feed(user_id, 500, from_id)
+
+        all_feed_comments = []
+
+        for f_item in feed_items:
+            if f_item['preview_comments'] and len(f_item['preview_comments']) > 0:
+                if len(f_item['preview_comments']) == int(f_item['comment_count']):
+                    print('All comments in preview for ' + str(f_item['pk']))
+                    comments = f_item['preview_comments']
+                else:
+                    print('Getting comments for ' + str(f_item['pk']))
+                    comments = self.api.media_n_comments(f_item['pk'], n=150)
+                all_feed_comments = all_feed_comments + comments
+                await asyncio.sleep(0.4)
+                await self.resend_typing_to_user(from_id)
+            else:
+                print('No comments for ' + str(f_item['pk']))
+
+        results = []
+        results.append('Загружено медиа: **{}**'.format(len(feed_items)))
+        results.append('')
+
+        users = {}
+        user_infos = {}
+
+        if len(all_feed_comments) == 0:
+            results.append('Комментарии к медиа отсутствуют!')
+        else:
+            results.append('Число загруженных комментариев: **{}**'.format(len(all_feed_comments)))
+            results.append('Активные комментаторы:')
+            results.append('')
+            for comment in all_feed_comments:
+                user = comment['user']
+                if user['username'] not in users:
+                    users[user['username']] = 1
+                    user_infos[user['username']] = user
+                else:
+                    users[user['username']] = users[user['username']] + 1
+
+        users = list(sorted(users.items(), key=lambda kv: kv[1], reverse=True))
+
+        for user in users:
+            user_text = self.get_user_tg_text(user_infos[user[0]])
+            user_text = user_text + ' (комментов: {})'.format(user[1])
+            results.append(user_text)
+
+        results = "\n".join(results)
+        await self.send_message_to_user(from_id, results)
+
+    async def on_active_likers_read_username(self, message, from_id, params):
+        await self.send_typing_to_user(from_id, True)
+        info = await self.get_user_info_by_username(from_id, message)
+        if not info:
+            await self.send_typing_to_user(from_id, False)
+            return
+
+        await self.send_message_to_user(from_id, 'Процесс может занять продолжительное время, подождите...', do_set_next=False)
+        await self.send_typing_to_user(from_id)
+
+        user_id = int(info['user']['pk'])
+        feed_items = await self.get_all_feed(user_id, 500, from_id)
+
+        all_feed_likes = []
+
+        for f_item in feed_items:
+            likers = self.api.media_likers(f_item['pk'])
+            all_feed_likes = all_feed_likes + likers['users']
+            await asyncio.sleep(0.4)
+            await self.resend_typing_to_user(from_id)
+
+        results = []
+        results.append('Загружено медиа: **{}**'.format(len(feed_items)))
+        results.append('')
+
+        users = {}
+        user_infos = {}
+
+        if len(all_feed_likes) == 0:
+            results.append('Лайки к медиа отсутствуют!')
+        else:
+            results.append('Число загруженных лайков: **{}**'.format(len(all_feed_likes)))
+
+            for user in all_feed_likes:
+                if user['username'] not in users:
+                    users[user['username']] = 1
+                    user_infos[user['username']] = user
+                else:
+                    users[user['username']] = users[user['username']] + 1
+
+            users = list(sorted(users.items(), key=lambda kv: kv[1], reverse=True))
+            users_before = []
+            filter_after = 1
+
+            if len(users) > 200:
+                results.append('Самые активные лайкатели:')
+                mid_user = users[round(len(users)/2) - 1]
+                filter_after = int(mid_user[1])
+                users_before = list(filter(lambda kv: int(kv[1]) <= filter_after, users))
+                users_after = list(filter(lambda kv: int(kv[1]) > filter_after, users))
+                while len(users_after) < 10:
+                    filter_after = filter_after - 1
+                    users_before = list(filter(lambda kv: int(kv[1]) <= filter_after, users))
+                    users_after = list(filter(lambda kv: int(kv[1]) > filter_after, users))
+                users = users_after
+            else:
+                results.append('Активные лайкатели:')
+            results.append('')
+
+            for user in users:
+                user_text = self.get_user_tg_text(user_infos[user[0]])
+                user_text = user_text + ' (лайков: {})'.format(user[1])
+                results.append(user_text)
+
+            if (len(users_before) > 0) and (filter_after > 0):
+                results.append('')
+                results.append('Помимо вышеперечисленных, есть ещё пользователи, ставившие лайки.')
+                results.append('Всего их **{}**. Каждый ставил количество лайков, меньше **{}**'.format(len(users_before), filter_after + 1))
+
+        results = "\n".join(results)
         await self.send_message_to_user(from_id, results)

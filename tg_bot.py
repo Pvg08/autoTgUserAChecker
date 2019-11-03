@@ -26,7 +26,7 @@ class InteractiveTelegramBot(TelegramClient):
             new_ver = float(self.tg_client.config['main']['actual_version'])
             new_ver_title = str(self.tg_client.config['main']['new_version_title'])
             new_ver_help = str(self.tg_client.config['main']['new_version_help'])
-            result_title = new_ver_title.replace('[actual_version]', "{0:0.01f}".format(new_ver)).replace('[bot_name]', self.tg_client.config['tg_bot']['bot_username'])
+            result_title = new_ver_title.replace('[actual_version]', "{0:0.2f}".format(new_ver)).replace('[bot_name]', self.tg_client.config['tg_bot']['bot_username'])
             result_title = result_title + '\n' + new_ver_help
             chats = self.tg_client.entity_controller.get_all_bot_users_chats()
             if chats and len(chats) > 0:
@@ -34,10 +34,11 @@ class InteractiveTelegramBot(TelegramClient):
                     user_last_version = self.tg_client.entity_controller.get_user_bot_last_version(chat.user_id)
                     if not user_last_version:
                         user_last_version = 0.0
+                    user_last_version = float(user_last_version)
                     result_user_message=[]
                     for version_message in version_messages:
                         if version_message['version'] > user_last_version:
-                            version_message_text = 'Список изменений версии {0:0.01f}:\n'.format(version_message['version'])
+                            version_message_text = 'Список изменений версии {0:0.2f}:\n'.format(version_message['version'])
                             version_message_text = version_message_text + version_message['message']
                             result_user_message.append(version_message_text)
                     if len(result_user_message) > 0:
@@ -61,7 +62,7 @@ class InteractiveTelegramBot(TelegramClient):
             if line.startswith('===') and line.endswith('==='):
                 if len(this_ver_messages) > 0:
                     message = ("\n".join(this_ver_messages)).strip()
-                    message = message.replace('[version]', "{0:0.01f}".format(this_ver))
+                    message = message.replace('[version]', "{0:0.2f}".format(this_ver))
                     if message != '':
                         version_messages.append({
                             'version': this_ver,
@@ -74,7 +75,7 @@ class InteractiveTelegramBot(TelegramClient):
         if len(this_ver_messages) > 0:
             message = ("\n".join(this_ver_messages)).strip()
             if message != '':
-                message = message.replace('[version]', "{0:0.01f}".format(this_ver))
+                message = message.replace('[version]', "{0:0.2f}".format(this_ver))
                 version_messages.append({
                     'version': this_ver,
                     'message': message

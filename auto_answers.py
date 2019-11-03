@@ -12,8 +12,10 @@ from status_controller import StatusController
 
 class AutoAnswers(BotActionBranch):
 
-    def __init__(self, tg_bot_controller):
-        super().__init__(tg_bot_controller)
+    def __init__(self, tg_bot_controller, branch_parent, branch_code=None):
+        super().__init__(tg_bot_controller, branch_parent, branch_code)
+
+        self.use_timer = True
 
         self.setup_step = 0
         self.setup_user_id = None
@@ -351,9 +353,12 @@ class AutoAnswers(BotActionBranch):
         check_user_name = await self.tg_bot_controller.tg_client.get_entity_name(from_id, 'User')
         print(StatusController.datetime_to_str(datetime.now()) + ' Adding AA schedule for user "' + check_user_name + '"')
         if self.aa_options['answer_after_minutes'] <= 0.05:
-            await self.on_timer([from_id])
+            await self.do_on_timer([from_id])
 
-    async def on_timer(self, check_ids=None):
+    async def on_timer(self):
+        await self.do_on_timer()
+
+    async def do_on_timer(self, check_ids=None):
         try:
             if not self.aa_options['is_set']:
                 return

@@ -1,5 +1,7 @@
+import asyncio
 import re
 import traceback
+from datetime import datetime
 
 from telethon.client import MessageParseMethods
 from telethon.errors import MessageNotModifiedError
@@ -11,11 +13,18 @@ from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction, 
 
 class BotActionBranch:
 
-    def __init__(self, tg_bot_controller):
+    def __init__(self, tg_bot_controller, branch_parent, branch_code=None):
+        if branch_code is None:
+            branch_code = ''
         self.tg_bot_controller = tg_bot_controller
         self.max_commands = 1
         self.branches = []
         self.read_once_callbacks = {}
+        self.default_pick_action_text = 'Выберите дальнейшее действие'
+        self.branch_parent = branch_parent
+        self.branch_code = branch_code
+        self.last_typing_sent_date = None
+        self.use_timer = False
         self.commands = {
             '/help': {
                 'cmd': self.cmd_help,
@@ -28,8 +37,8 @@ class BotActionBranch:
                 'rights_level': 0,
                 'desc': 'краткая справка, это ее ты сейчас видишь.'
             },
-            '/back': {
-                'cmd': self.cmd_back,
+            '/main': {
+                'cmd': self.cmd_to_top,
                 'display_condition': self.is_in_second_branch,
                 'bot_button': {
                     'title': 'Главное меню',
@@ -38,6 +47,17 @@ class BotActionBranch:
                 'places': ['bot'],
                 'rights_level': 0,
                 'desc': 'вернуться в основное меню'
+            },
+            '/back': {
+                'cmd': self.cmd_back,
+                'display_condition': self.is_in_third_branches,
+                'bot_button': {
+                    'title': 'Уровнем выше',
+                    'position': [1000, 0],
+                },
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': 'подняться на уровень выше'
             },
         }
         self.command_groups = {}
@@ -48,23 +68,26 @@ class BotActionBranch:
             'desc': None
         }
 
+    async def on_timer(self):
+        pass
+
     def on_init_finish(self):
         if self != self.tg_bot_controller:
-            self.tg_bot_controller.add_branch(self)
+            if self.branch_parent:
+                self.branch_parent.branches.append(self)
             self.tg_bot_controller.sub_commands_forbidden = self.tg_bot_controller.sub_commands_forbidden + list(self.commands.keys())
-
-    def register_branch(self, command, cmd_class):
-        obj = cmd_class(self.tg_bot_controller)
-        self.commands[command]['cmd'] = obj
-        self.commands[command]['condition'] = obj.can_use_branch
 
     def register_cmd_branches(self):
         for k in self.commands.keys():
             if ('class' in self.commands[k]) and self.commands[k]['class']:
-                self.register_branch(k, self.commands[k]['class'])
-
-    def add_branch(self, branch):
-        self.branches.append(branch)
+                cmd_class = self.commands[k]['class']
+                if issubclass(cmd_class, BotActionBranch):
+                    obj = cmd_class(self.tg_bot_controller, self, str(k).strip('/'))
+                    self.commands[k]['cmd'] = obj
+                    self.commands[k]['condition'] = obj.can_use_branch
+                    obj.register_cmd_branches()
+        if self.use_timer:
+            self.tg_bot_controller.tg_client.register_on_timer(self.on_timer)
 
     def can_use_branch(self, user_id):
         return True
@@ -116,7 +139,7 @@ class BotActionBranch:
 
     async def get_commands_description_list(self, for_user_id, str_pick_text=None):
         if str_pick_text is None:
-            str_pick_text = 'Выберите дальнейшее действие'
+            str_pick_text = self.default_pick_action_text
         result_str = []
         curr_place = self.tg_bot_controller.get_user_place_code(for_user_id)
         curr_rights = await self.tg_bot_controller.get_user_rights_level_realtime(for_user_id)
@@ -158,7 +181,10 @@ class BotActionBranch:
         return self.tg_bot_controller.get_user_branch(user_id) is None
 
     def is_in_second_branch(self, user_id):
-        return self.tg_bot_controller.get_user_branch(user_id) is not None
+        return (self.tg_bot_controller.get_user_branch(user_id) is not None) and (self.branch_parent == self.tg_bot_controller)
+
+    def is_in_third_branches(self, user_id):
+        return (self.tg_bot_controller.get_user_branch(user_id) is not None) and (self.branch_parent != self.tg_bot_controller)
 
     def is_not_active_message(self, user_id):
         msg_id_active = self.tg_bot_controller.get_user_message_id(user_id, True)
@@ -167,6 +193,13 @@ class BotActionBranch:
 
     def do_not_display(self, user_id):
         return False
+
+    def get_branch_path(self):
+        self_path = self.branch_code
+        if self.branch_parent:
+            pre_path = self.branch_parent.get_branch_path()
+            self_path = (pre_path + '/' + self_path).strip('/')
+        return '/' + self_path
 
     def activate_branch_for_user(self, user_id):
         if not self.tg_bot_controller.get_user_branch(user_id):
@@ -224,10 +257,11 @@ class BotActionBranch:
                     command['cmd']
             ):
                 try:
-                    if isinstance(command['cmd'], BotActionBranch):
-                        await command['cmd'].run_main_setup(from_id, command_parts[1:])
+                    command_obj = command['cmd']
+                    if isinstance(command_obj, BotActionBranch):
+                        await command_obj.run_main_setup(from_id, command_parts[1:])
                     else:
-                        await command['cmd'](from_id, command_parts[1:])
+                        await command_obj(from_id, command_parts[1:])
                 except:
                     traceback.print_exc()
                     await self.send_message_to_user(from_id, 'Какая-то ошибка!')
@@ -255,16 +289,39 @@ class BotActionBranch:
         if type(message) != Message:
             return
         try:
-            if message.entities and type(message.entities) == list and len(message.entities) > 0 and type(message.entities[0]) == MessageEntityTextUrl:
+            msg_text = message.text
+            if message.entities and len(message.entities) > 0 and str(msg_text).find('Фото профиля:') >= 0:
                 link_preview = True
             else:
                 link_preview = False
-            msg_text = message.text
             await message_client.edit_message(dialog_entity, message_id, text=msg_text, link_preview=link_preview, buttons=None)
         except MessageNotModifiedError:
             return
 
     async def send_message_to_user(self, user_id, message, link_preview=False, buttons=None, set_active=False, do_set_next=True):
+        if not self.tg_bot_controller.is_active_for_user(user_id):
+            return
+        if (len(message) + 8) >= 4096:
+            status_results = message.strip().splitlines()
+            status_results.reverse()
+            buff_len = 1
+            while buff_len > 0:
+                buff = []
+                buff_len = 0
+                while (len(status_results) > 0) and (buff_len + len(status_results[len(status_results) - 1]) + 8) < 4096:
+                    last_s = status_results.pop()
+                    buff.append(last_s)
+                    buff_len = buff_len + len(last_s) + 1
+                if buff_len > 0:
+                    if len(status_results) > 0:
+                        await self.send_one_message_to_user(user_id, "\n".join(buff), link_preview, None, False, False)
+                        await asyncio.sleep(0.75)
+                    else:
+                        await self.send_one_message_to_user(user_id, "\n".join(buff), link_preview, buttons, set_active, do_set_next)
+        else:
+            await self.send_one_message_to_user(user_id, message, link_preview, buttons, set_active, do_set_next)
+
+    async def send_one_message_to_user(self, user_id, message, link_preview=False, buttons=None, set_active=False, do_set_next=True):
         if not self.tg_bot_controller.is_active_for_user(user_id):
             return
         try:
@@ -317,16 +374,31 @@ class BotActionBranch:
         str_user_id = str(user_id)
         message_client = self.tg_bot_controller.users[str_user_id]['message_client']
         dialog_entity = self.tg_bot_controller.users[str_user_id]['dialog_entity']
+        self.last_typing_sent_date = datetime.now()
         return await message_client(functions.messages.SetTypingRequest(
             peer=dialog_entity,
             action=SendMessageTypingAction() if typing_begin else SendMessageCancelAction()
         ))
+
+    async def resend_typing_to_user(self, user_id):
+        if self.last_typing_sent_date and ((datetime.now() - self.last_typing_sent_date).total_seconds() > 5):
+            await self.send_typing_to_user(user_id)
 
     async def return_to_main_branch(self, from_id):
         if self == self.tg_bot_controller:
             self.tg_bot_controller.set_branch_for_user(from_id, None)
         else:
             self.deactivate_branch_for_user(from_id)
+        await self.tg_bot_controller.cmd_help(from_id, [])
+
+    async def return_to_back_branch(self, from_id):
+        if self == self.tg_bot_controller:
+            self.tg_bot_controller.set_branch_for_user(from_id, None)
+        else:
+            if self.branch_parent != self.tg_bot_controller:
+                self.tg_bot_controller.set_branch_for_user(from_id, self.branch_parent)
+            else:
+                self.deactivate_branch_for_user(from_id)
         await self.tg_bot_controller.cmd_help(from_id, [])
 
     async def cmd_help(self, from_id, params):
@@ -336,5 +408,8 @@ class BotActionBranch:
         text.append('Список доступных для тебя моих команд')
         await self.show_current_branch_commands(from_id, "\n".join(text))
 
-    async def cmd_back(self, from_id, params):
+    async def cmd_to_top(self, from_id, params):
         await self.return_to_main_branch(from_id)
+
+    async def cmd_back(self, from_id, params):
+        await self.return_to_back_branch(from_id)
