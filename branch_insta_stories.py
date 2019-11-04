@@ -1,9 +1,7 @@
-import asyncio
-import codecs
 import json
 import traceback
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import os
 
@@ -11,6 +9,7 @@ import requests
 from playsound import playsound
 
 from bot_action_branch import BotActionBranch
+from status_controller import StatusController
 
 
 class InstaStoriesBranch(BotActionBranch):
@@ -21,13 +20,13 @@ class InstaStoriesBranch(BotActionBranch):
         self.use_timer = True
         self.last_stories_check_time = None
 
-        self.max_commands = 3
+        self.max_commands = 4
         self.commands.update({
             '/insta_set_stories_users': {
                 'cmd': self.cmd_set_stories_users,
                 'condition': self.branch_parent.can_use_branch,
                 'bot_button': {
-                    'title': 'Источники историй',
+                    'title': 'Задать источники',
                     'position': [0, 0],
                 },
                 'places': ['bot'],
@@ -39,11 +38,22 @@ class InstaStoriesBranch(BotActionBranch):
                 'condition': self.branch_parent.can_use_branch,
                 'bot_button': {
                     'title': 'Очистить для всех',
-                    'position': [1, 0],
+                    'position': [0, 1],
                 },
                 'places': ['bot'],
                 'rights_level': 4,
                 'desc': 'очистить список пользователей историй для всех'
+            },
+            '/insta_stories_log': {
+                'cmd': self.cmd_show_stories_log,
+                'condition': self.branch_parent.can_use_branch,
+                'bot_button': {
+                    'title': 'Последние истории',
+                    'position': [1, 0],
+                },
+                'places': ['bot'],
+                'rights_level': 3,
+                'desc': 'показать список последних скачанных историй'
             },
         })
         self.on_init_finish()
@@ -86,6 +96,15 @@ class InstaStoriesBranch(BotActionBranch):
             story_records = json.loads(story_records)
         else:
             story_records = {}
+
+        for st_id in list(story_records.keys()):
+            try:
+                n_time = StatusController.now_local_datetime()
+                d_time = StatusController.timestamp_to_local_datetime(int(story_records[st_id]['taken_at']))
+                if (not d_time) or (n_time - d_time).total_seconds() > (2 * 24 * 60 * 60):
+                    del story_records[st_id]
+            except:
+                del story_records[st_id]
 
         dups = 0
         for item in response['items']:
@@ -193,7 +212,7 @@ class InstaStoriesBranch(BotActionBranch):
 
     @staticmethod
     def get_story_file_name(taken_at, location):
-        story_fname = datetime.utcfromtimestamp(int(taken_at)).strftime('%Y-%m-%d--%H%M%S')
+        story_fname = StatusController.timestamp_to_utc_str(taken_at, '%Y-%m-%d--%H%M%S')
         if location:
             story_fname = story_fname + ' ' + location
         story_fname = re.sub(r'[^\w\s\d.,-]', '', story_fname)
@@ -321,6 +340,23 @@ class InstaStoriesBranch(BotActionBranch):
     async def cmd_reset_stories_users(self, from_id, params):
         self.tg_bot_controller.tg_client.entity_controller.set_entity_db_option(None, 'stories_accounts', None)
         await self.send_message_to_user(from_id, 'Сброс аккаунтов для получения историй выполнен!')
+
+    async def cmd_show_stories_log(self, from_id, params):
+        story_records = self.tg_bot_controller.tg_client.entity_controller.get_entity_db_option(0, 'insta_story_entries')
+        if story_records:
+            story_records = json.loads(story_records)
+        else:
+            story_records = {}
+        story_records = list(filter(lambda xs: xs[1]['filename'] != '', sorted(story_records.items(), key=lambda x: x[1]['taken_at'], reverse=True)))
+        if not story_records or len(story_records) == 0:
+            await self.send_message_to_user(from_id, 'Истории ещё не скачивались!')
+            return
+        story_records = story_records[:10]
+        story_records = [StatusController.timestamp_to_str(x[1]['taken_at']) + ': файл "' + x[1]['filename'] + '"' for x in story_records]
+        results = ['**Лог скачиваний**:\n```']
+        results = results + story_records
+        results = "\n\n".join(results) + '```'
+        await self.send_message_to_user(from_id, results)
 
     async def on_set_user_stories(self, message, from_id, params):
         message = str(message).strip().lower()

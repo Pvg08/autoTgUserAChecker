@@ -1,11 +1,10 @@
 import json
 import re
 import traceback
-from datetime import datetime, timedelta
 
 import apiai
 import pyowm
-from telethon.tl.types import PeerUser, User, UserStatusOnline, UserStatusOffline
+from telethon.tl.types import PeerUser, User
 
 from bot_action_branch import BotActionBranch
 from auto_answers import AutoAnswers

@@ -4,7 +4,7 @@ from datetime import datetime
 from playsound import playsound
 from telethon import TelegramClient, events
 from telethon.events import NewMessage
-from telethon.tl.types import UpdateNewMessage, PeerUser, InputPeerUser, UpdateBotCallbackQuery, Message
+from telethon.tl.types import UpdateNewMessage, PeerUser, UpdateBotCallbackQuery, Message
 
 from bot_action_branch import BotActionBranch
 from status_controller import StatusController

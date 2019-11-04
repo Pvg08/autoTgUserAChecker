@@ -56,6 +56,18 @@ class StatusController:
     def tg_datetime_to_local_datetime(dtime):
         return dtime.replace(tzinfo=timezone.utc).astimezone(tz=None)
 
+    @staticmethod
+    def timestamp_to_local_datetime(stamp):
+        return StatusController.tg_datetime_to_local_datetime(datetime.utcfromtimestamp(int(stamp)))
+
+    @staticmethod
+    def timestamp_to_str(stamp, format='%Y-%m-%d %H:%M:%S'):
+        return StatusController.tg_datetime_to_local_datetime(datetime.utcfromtimestamp(int(stamp))).strftime(format)
+
+    @staticmethod
+    def timestamp_to_utc_str(stamp, format='%Y-%m-%d %H:%M:%S'):
+        return datetime.utcfromtimestamp(int(stamp)).strftime(format)
+
     def has_user_activity(self, user_id):
         row = self.db_conn.execute("""
             SELECT * FROM `activity` WHERE `user_id` = ? LIMIT 1

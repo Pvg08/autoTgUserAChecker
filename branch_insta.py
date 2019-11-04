@@ -2,8 +2,7 @@ import asyncio
 import codecs
 import json
 import traceback
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from bot_action_branch import BotActionBranch
 from branch_insta_stories import InstaStoriesBranch
@@ -108,7 +107,7 @@ class InstaBranch(BotActionBranch):
                 },
                 'places': ['bot'],
                 'rights_level': 3,
-                'desc': 'управление списоками пользователей - источников stories. У этих пользователей будет проводиться регулярное выкачивание stories'
+                'desc': 'управление списками пользователей - источников stories. У этих пользователей будет проводиться регулярное выкачивание stories'
             },
             '/insta_set_username': {
                 'cmd': self.cmd_set_username,
@@ -301,54 +300,30 @@ class InstaBranch(BotActionBranch):
                 print('Instagram user "' + username + '" was not found!')
         return None
 
-    async def cmd_user_info(self, from_id, params):
-        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
-        if uname:
-            await self.on_info_read_username(uname, from_id, None)
-        else:
-            await self.read_bot_str(from_id, self.on_info_read_username, 'Введите имя пользователя Instagram:')
-
-    async def cmd_user_locations(self, from_id, params):
-        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
-        if uname:
-            await self.on_locations_read_username(uname, from_id, None)
-        else:
-            await self.read_bot_str(from_id, self.on_locations_read_username, 'Введите имя пользователя Instagram:')
-
-    async def cmd_user_active_commenters(self, from_id, params):
-        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
-        if uname:
-            await self.on_active_commenters_read_username(uname, from_id, None)
-        else:
-            await self.read_bot_str(from_id, self.on_active_commenters_read_username, 'Введите имя пользователя Instagram:')
-
-    async def cmd_user_active_likers(self, from_id, params):
-        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
-        if uname:
-            await self.on_active_likers_read_username(uname, from_id, None)
-        else:
-            await self.read_bot_str(from_id, self.on_active_likers_read_username, 'Введите имя пользователя Instagram:')
-
-    async def cmd_check_followers(self, from_id, params):
-        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
-        if uname:
-            await self.on_check_read_username(uname, from_id, "forward")
-        else:
-            await self.read_bot_str(from_id, self.on_check_read_username, 'Введите имя пользователя Instagram:', "forward")
-
-    async def cmd_check_followings(self, from_id, params):
-        uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
-        if uname:
-            await self.on_check_read_username(uname, from_id, "back")
-        else:
-            await self.read_bot_str(from_id, self.on_check_read_username, 'Введите имя пользователя Instagram:', "back")
-
     async def cmd_set_username(self, from_id, params):
         await self.read_bot_str(from_id, self.on_check_set_username, 'Введите имя пользователя Instagram:')
 
     async def cmd_reset_username(self, from_id, params):
         self.tg_bot_controller.tg_client.entity_controller.save_user_instagram_name(from_id, None)
         await self.send_message_to_user(from_id, 'Сброс имени инстаграм-аккаунта выполнен!')
+
+    async def cmd_user_info(self, from_id, params):
+        await self.read_or_run_default(from_id, self.on_info_read_username, self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name, 'Введите имя пользователя Instagram:')
+
+    async def cmd_user_locations(self, from_id, params):
+        await self.read_or_run_default(from_id, self.on_locations_read_username, self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name, 'Введите имя пользователя Instagram:')
+
+    async def cmd_user_active_commenters(self, from_id, params):
+        await self.read_or_run_default(from_id, self.on_active_commenters_read_username, self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name, 'Введите имя пользователя Instagram:')
+
+    async def cmd_user_active_likers(self, from_id, params):
+        await self.read_or_run_default(from_id, self.on_active_likers_read_username, self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name, 'Введите имя пользователя Instagram:')
+
+    async def cmd_check_followers(self, from_id, params):
+        await self.read_or_run_default(from_id, self.on_check_read_username, self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name, 'Введите имя пользователя Instagram:', "forward")
+
+    async def cmd_check_followings(self, from_id, params):
+        await self.read_or_run_default(from_id, self.on_check_read_username, self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name, 'Введите имя пользователя Instagram:', "back")
 
     async def on_check_set_username(self, message, from_id, params):
         info = await self.get_user_info_by_username(from_id, message)

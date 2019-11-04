@@ -10,17 +10,15 @@ from datetime import datetime
 from getpass import getpass
 
 from playsound import playsound
-from telethon.errors import SessionPasswordNeededError, ChatIdInvalidError
+from telethon.errors import SessionPasswordNeededError
 from telethon.network import ConnectionTcpMTProxyRandomizedIntermediate, ConnectionTcpAbridged
 from telethon import TelegramClient, events
-from telethon.tl import functions
-from telethon.tl.functions.messages import GetHistoryRequest, GetDialogsRequest
-from telethon.tl.types import UpdateUserStatus, UserStatusOnline, UserStatusOffline, UpdateUserTyping, PeerUser, \
+from telethon.tl.types import UpdateUserStatus, UpdateUserTyping, PeerUser, \
     UpdateNewChannelMessage, UpdateShortMessage, User, UpdateEditChannelMessage, \
     UpdateEditMessage, UpdateDeleteChannelMessages, UpdateMessagePoll, PeerChannel, PeerChat, UpdateDeleteMessages, \
     UpdateNewMessage, UpdateReadHistoryOutbox, UpdateReadHistoryInbox, UpdateDraftMessage, UpdateChannelMessageViews, \
-    UpdateReadChannelInbox, UpdateWebPage, UpdateShortChatMessage, UpdateChatUserTyping, Channel, Chat, \
-    UpdateNotifySettings, UpdateChannelPinnedMessage, InputPeerUser
+    UpdateReadChannelInbox, UpdateWebPage, UpdateShortChatMessage, UpdateChatUserTyping, \
+    UpdateNotifySettings, UpdateChannelPinnedMessage
 from telethon.utils import get_display_name, is_list_like
 
 from bot_controller import BotController

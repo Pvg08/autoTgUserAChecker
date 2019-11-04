@@ -2,7 +2,6 @@ import asyncio
 from datetime import timedelta, datetime
 
 from telethon.tl.types import UserStatusOnline, UserStatusOffline
-from telethon.utils import is_list_like
 
 from bot_action_branch import BotActionBranch
 from status_controller import StatusController
@@ -15,7 +14,7 @@ class ActivityBranch(BotActionBranch):
 
         self.me_picker_cmd = None
 
-        self.max_commands = 8
+        self.max_commands = 9
         self.commands.update({
             '/activity_today': {
                 'cmd': self.cmd_activity_today,

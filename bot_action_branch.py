@@ -3,12 +3,9 @@ import re
 import traceback
 from datetime import datetime
 
-from telethon.client import MessageParseMethods
 from telethon.errors import MessageNotModifiedError
 from telethon.tl import functions
-from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction, ReplyKeyboardMarkup, KeyboardButtonRow, \
-    KeyboardButtonCallback, KeyboardButton, ReplyInlineMarkup, KeyboardButtonSwitchInline, KeyboardButtonBuy, \
-    ReplyKeyboardForceReply, Message, MessageEntityTextUrl
+from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction, KeyboardButtonCallback, Message
 
 
 class BotActionBranch:
@@ -54,7 +51,7 @@ class BotActionBranch:
                 'cmd': self.cmd_back,
                 'display_condition': self.is_in_third_branches,
                 'bot_button': {
-                    'title': 'Уровнем выше',
+                    'title': 'Назад',
                     'position': [1000, 0],
                 },
                 'places': ['bot'],
@@ -218,6 +215,15 @@ class BotActionBranch:
             'callback': callback,
             'params': params
         }
+
+    async def read_or_run_default(self, from_id, callback_cmd, callback_param, read_message, cmd_params=None):
+        # async def callback_cmd(message, from_id, params)
+        # def callback_param(user_id)
+        u_param = callback_param(from_id)
+        if u_param:
+            await callback_cmd(u_param, from_id, cmd_params)
+        else:
+            await self.read_bot_str(from_id, callback_cmd, read_message, cmd_params)
 
     async def run_main_setup(self, from_id, params):
         if self.tg_bot_controller.is_active_for_user(from_id):
