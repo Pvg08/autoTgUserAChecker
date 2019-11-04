@@ -81,5 +81,6 @@ gen
 *.db-journal
 
 # other
+/stories/*
 /files/*.png
 /cache_instagram.json

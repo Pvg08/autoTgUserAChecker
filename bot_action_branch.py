@@ -21,6 +21,8 @@ class BotActionBranch:
         self.branches = []
         self.read_once_callbacks = {}
         self.default_pick_action_text = 'Выберите дальнейшее действие'
+        self.yes_variants = ['1', 'да', 'ок', 'yes', 'ok', 'y', 'хорошо', '+']
+        self.no_variants = ['0', 'нет', 'не', 'no', 'not', 'n', '-']
         self.branch_parent = branch_parent
         self.branch_code = branch_code
         self.last_typing_sent_date = None
@@ -202,12 +204,12 @@ class BotActionBranch:
         return '/' + self_path
 
     def activate_branch_for_user(self, user_id):
-        if not self.tg_bot_controller.get_user_branch(user_id):
+        curr_branch = self.tg_bot_controller.get_user_branch(user_id)
+        if (not curr_branch) or (curr_branch == self.branch_parent):
             self.tg_bot_controller.set_branch_for_user(user_id, self)
 
     def deactivate_branch_for_user(self, user_id):
-        if self.is_in_current_branch(user_id):
-            self.tg_bot_controller.set_branch_for_user(user_id, None)
+        self.tg_bot_controller.set_branch_for_user(user_id, None)
 
     async def read_bot_str(self, from_id, callback, message=None, params=None):
         if message:
@@ -385,21 +387,18 @@ class BotActionBranch:
             await self.send_typing_to_user(user_id)
 
     async def return_to_main_branch(self, from_id):
-        if self == self.tg_bot_controller:
-            self.tg_bot_controller.set_branch_for_user(from_id, None)
-        else:
-            self.deactivate_branch_for_user(from_id)
+        self.deactivate_branch_for_user(from_id)
         await self.tg_bot_controller.cmd_help(from_id, [])
 
     async def return_to_back_branch(self, from_id):
         if self == self.tg_bot_controller:
-            self.tg_bot_controller.set_branch_for_user(from_id, None)
+            self.deactivate_branch_for_user(from_id)
         else:
             if self.branch_parent != self.tg_bot_controller:
                 self.tg_bot_controller.set_branch_for_user(from_id, self.branch_parent)
+                await self.branch_parent.cmd_help(from_id, [])
             else:
                 self.deactivate_branch_for_user(from_id)
-        await self.tg_bot_controller.cmd_help(from_id, [])
 
     async def cmd_help(self, from_id, params):
         text = []

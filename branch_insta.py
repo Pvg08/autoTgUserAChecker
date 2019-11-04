@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timedelta
 
 from bot_action_branch import BotActionBranch
+from branch_insta_stories import InstaStoriesBranch
 
 
 class InstaBranch(BotActionBranch):
@@ -13,7 +14,7 @@ class InstaBranch(BotActionBranch):
     def __init__(self, tg_bot_controller, branch_parent, branch_code=None):
         super().__init__(tg_bot_controller, branch_parent, branch_code)
 
-        self.use_timer = True
+        self.use_timer = False
         self.last_stories_check_time = None
 
         self.api = None
@@ -30,7 +31,7 @@ class InstaBranch(BotActionBranch):
         except ImportError:
             pass
 
-        self.max_commands = 8
+        self.max_commands = 9
         self.commands.update({
             '/insta_check_followers': {
                 'cmd': self.cmd_check_followers,
@@ -98,8 +99,8 @@ class InstaBranch(BotActionBranch):
                 'rights_level': 0,
                 'desc': 'активно ставящие лайки пользователи'
             },
-            '/insta_set_stories_users': {
-                'cmd': self.cmd_set_stories_users,
+            '/insta_stories': {
+                'class': InstaStoriesBranch,
                 'condition': self.can_use_branch,
                 'bot_button': {
                     'title': 'Источники историй',
@@ -107,7 +108,7 @@ class InstaBranch(BotActionBranch):
                 },
                 'places': ['bot'],
                 'rights_level': 3,
-                'desc': 'указать список пользователей - источников stories. У этих пользователей будет проводиться регулярное выкачивание stories'
+                'desc': 'управление списоками пользователей - источников stories. У этих пользователей будет проводиться регулярное выкачивание stories'
             },
             '/insta_set_username': {
                 'cmd': self.cmd_set_username,
@@ -134,13 +135,15 @@ class InstaBranch(BotActionBranch):
         })
         self.on_init_finish()
 
-    async def show_current_branch_commands(self, from_id, pre_text=None):
-        if pre_text is None:
-            pre_text = self.default_pick_action_text
+    async def show_current_branch_commands(self, from_id, post_text=None):
+        if post_text is None:
+            post_text = self.default_pick_action_text
         uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
+        pre_text = ''
         if uname:
-            pre_text = "\nВыбранный пользователь инстаграм: **" + uname + "**\n\n" + pre_text
-        await super().show_current_branch_commands(from_id, pre_text)
+            pre_text = pre_text + "\nВыбранный пользователь инстаграм: **" + uname + "**\n"
+
+        await super().show_current_branch_commands(from_id, pre_text + "\n" + post_text)
 
     @staticmethod
     def to_json(python_object):
@@ -220,14 +223,6 @@ class InstaBranch(BotActionBranch):
             return False
         return self.can_use_branch(user_id)
 
-    async def on_timer(self):
-        if not self.has_insta_lib:
-            return
-        if self.last_stories_check_time and (datetime.now() - self.last_stories_check_time).total_seconds() < 555:
-            return
-        self.last_stories_check_time = datetime.now()
-        pass
-
     @staticmethod
     def get_user_tg_text(user):
         base_str = '[' + user['username'] + '](https://www.instagram.com/'+user['username']+'/)'
@@ -280,7 +275,10 @@ class InstaBranch(BotActionBranch):
     async def get_user_info_by_username(self, from_id, username):
         self.do_login_if_need()
         if not self.api:
-            await self.send_message_to_user(from_id, 'API-клиент не был инициализирован!')
+            if from_id:
+                await self.send_message_to_user(from_id, 'API-клиент не был инициализирован!')
+            else:
+                print("Can't initialize instagram client!")
             return
         username = str(username).lower().strip()
         try:
@@ -290,18 +288,18 @@ class InstaBranch(BotActionBranch):
                 user_id = info['user']['pk']
             else:
                 user_id = None
-            if not user_id:
+            if not user_id and from_id:
                 await self.send_message_to_user(from_id, 'Пользователь с именем "'+username+'" не найден!')
                 return None
             print('Instagram: User ' + username + ' was found...')
             return info
         except:
-            traceback.print_exc()
-            await self.send_message_to_user(from_id, 'Пользователь с именем "' + username + '" не найден!')
+            # traceback.print_exc()
+            if from_id:
+                await self.send_message_to_user(from_id, 'Пользователь с именем "' + username + '" не найден!')
+            else:
+                print('Instagram user "' + username + '" was not found!')
         return None
-
-    async def cmd_set_stories_users(self, from_id, params):
-        pass
 
     async def cmd_user_info(self, from_id, params):
         uname = self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name(from_id)
@@ -488,10 +486,10 @@ class InstaBranch(BotActionBranch):
             results.append('')
             results.append('')
             results = results + list(sorted(locations))
-            results = "\n".join(results)
         else:
             results.append('Локаций не обнаружено!')
 
+        results = "\n".join(results)
         await self.send_message_to_user(from_id, results)
 
     async def on_active_commenters_read_username(self, message, from_id, params):

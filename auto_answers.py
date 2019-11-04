@@ -23,8 +23,6 @@ class AutoAnswers(BotActionBranch):
         self.active_dialog_entity = None
         self.aa_for_users = {}
         self.aa_not_for_users = []
-        self.yes_variants = ['1', 'да', 'ок', 'yes', 'ok', 'y', 'хорошо', '+']
-        self.no_variants = ['0', 'нет', 'не', 'no', 'not', 'n', '-']
         self.aa_options = {
             'is_set': False,
             'from_mode': 0,

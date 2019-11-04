@@ -115,8 +115,29 @@ class EntityController():
             traceback.print_exc()
         return None
 
+    def get_entity_db_option_list(self, option_name, except_user_id=-1):
+        result = []
+        try:
+            rows = self.db_conn.execute("""
+                SELECT DISTINCT(`option_value`) FROM `users_options` 
+                WHERE `entity_id` != ? AND `option_name` = ? 
+            """, [str(except_user_id), str(option_name)]).fetchall()
+            for row in rows:
+                if row and ('option_value' in row) and row['option_value'] and len(str(row['option_value'])) > 0:
+                    result.append(str(row['option_value']))
+        except:
+            traceback.print_exc()
+        return result
+
     def set_entity_db_option(self, entity_id, option_name, option_value):
         try:
+            if entity_id is None:
+                c = self.db_conn.cursor()
+                c.execute("""
+                    UPDATE `users_options` SET `option_value` = ? WHERE `option_name` = ?
+                """, [option_value, str(option_name)])
+                self.db_conn.commit()
+                return
             if self.get_entity_db_option(entity_id, option_name) == option_value:
                 return
             c = self.db_conn.cursor()
