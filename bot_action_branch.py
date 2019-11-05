@@ -18,6 +18,8 @@ class BotActionBranch:
         self.branches = []
         self.read_once_callbacks = {}
         self.default_pick_action_text = 'Выберите дальнейшее действие'
+        self.default_not_avail_command_text = 'Невозможно выполнить команду!\n\nДля получения списка доступных команд нажмите **[Продолжить]**'
+        self.default_error_text = 'Какая-то ошибка!\n\n[error_name]'
         self.yes_variants = ['1', 'да', 'ок', 'yes', 'ok', 'y', 'хорошо', '+']
         self.no_variants = ['0', 'нет', 'не', 'no', 'not', 'n', '-']
         self.branch_parent = branch_parent
@@ -270,14 +272,14 @@ class BotActionBranch:
                         await command_obj.run_main_setup(from_id, command_parts[1:])
                     else:
                         await command_obj(from_id, command_parts[1:])
-                except:
+                except Exception as exception:
                     traceback.print_exc()
-                    await self.send_message_to_user(from_id, 'Какая-то ошибка!')
+                    await self.send_message_to_user(from_id, self.default_error_text.replace('[error_name]', str(exception)).strip())
             else:
-                await self.send_message_to_user(from_id, 'Невозможно выполнить команду!')
+                await self.send_message_to_user(from_id, self.default_not_avail_command_text)
             return True
         elif command_code in self.sub_commands_forbidden:
-            await self.send_message_to_user(from_id, 'Невозможно выполнить команду!')
+            await self.send_message_to_user(from_id, self.default_not_avail_command_text)
             return True
         return False
 

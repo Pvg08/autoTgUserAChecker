@@ -227,8 +227,15 @@ class InstaBranch(BotActionBranch):
         base_str = '[' + user['username'] + '](https://www.instagram.com/'+user['username']+'/)'
         if user['full_name']:
             base_str = base_str + ' - ' + user['full_name']
+        app_str = []
         if user['is_private']:
-            base_str = base_str + ' (закрытый)'
+            app_str.append('закрытый')
+        if user['is_verified']:
+            app_str.append('верифицированный')
+        if user['latest_reel_media'] != 0:
+            app_str.append('активная история')
+        if len(app_str) > 0:
+            base_str = base_str + ' ({})'.format(",".join(app_str))
         return base_str
 
     def get_all_followers(self, api_user_id):
@@ -483,8 +490,8 @@ class InstaBranch(BotActionBranch):
         all_feed_comments = []
 
         for f_item in feed_items:
-            if f_item['preview_comments'] and len(f_item['preview_comments']) > 0:
-                if len(f_item['preview_comments']) == int(f_item['comment_count']):
+            if 'preview_comments' in f_item:
+                if f_item['preview_comments'] and (len(f_item['preview_comments']) == int(f_item['comment_count'])):
                     print('All comments in preview for ' + str(f_item['pk']))
                     comments = f_item['preview_comments']
                 else:

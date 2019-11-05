@@ -773,18 +773,19 @@ class StatusController:
                     me_top_10 = None
                     me_last_cnt = None
                     me_words_count = 0
+                    all_words_me = {}
                     if (not skip_vocab) and (len(me_words) > 0):
-                        all_words = {}
                         for word in me_words:
-                            if word and (word not in all_words):
-                                all_words[word] = True
-                        me_words_count = len(all_words)
+                            if word and (word not in all_words_me):
+                                all_words_me[word] = True
+                        me_words_count = len(all_words_me)
 
                         me_words = list(filter(lambda x: x and self.is_valid_word(x, valid_word_types), me_words))
                         wordlist = sorted(me_words)
                         wordfreq = [wordlist.count(p) for p in wordlist]
                         dic = dict(zip(wordlist, wordfreq))
-                        words = list(sorted(dic.items(), key=lambda x: x[1], reverse=True))
+                        me_words = list(sorted(dic.items(), key=lambda x: x[1], reverse=True))
+                        words = me_words
                         half_words = round(len(words) / 2)
                         if half_words < 3:
                             half_words = 3
@@ -807,18 +808,19 @@ class StatusController:
                     another_top_10 = None
                     another_last_cnt = None
                     another_words_count = 0
+                    all_words_another = {}
                     if (not skip_vocab) and (len(another_words) > 0):
-                        all_words = {}
                         for word in another_words:
-                            if word and (word not in all_words):
-                                all_words[word] = True
-                        another_words_count = len(all_words)
+                            if word and (word not in all_words_another):
+                                all_words_another[word] = True
+                        another_words_count = len(all_words_another)
 
                         another_words = list(filter(lambda x: x and self.is_valid_word(x, valid_word_types), another_words))
                         wordlist = sorted(another_words)
                         wordfreq = [wordlist.count(p) for p in wordlist]
                         dic = dict(zip(wordlist, wordfreq))
-                        words = list(sorted(dic.items(), key=lambda x: x[1], reverse=True))
+                        another_words = list(sorted(dic.items(), key=lambda x: x[1], reverse=True))
+                        words = another_words
                         half_words = round(len(words) / 2)
                         if half_words < 3:
                             half_words = 3
@@ -837,6 +839,31 @@ class StatusController:
                         last_cnt_words = last_cnt_words[0:last_cnt_cnt]
                         another_top_10 = top_10
                         another_last_cnt = last_cnt_words
+
+                    me_not_another_words_count = 0
+                    me_not_another_top = None
+
+                    another_not_me_words_count = 0
+                    another_not_me_top = None
+
+                    if (not skip_vocab) and (len(me_words) > 0) and (len(another_words) > 0):
+                        me_not_another_top = []
+                        for word in me_words:
+                            if word[0] not in all_words_another:
+                                me_not_another_top.append(word)
+
+                        me_not_another_words_count = len(me_not_another_top)
+                        me_not_another_top = me_not_another_top[:10]
+                        me_not_another_top = list(map(lambda x: '**' + str(x[0]) + '** (' + str(x[1]) + ')', me_not_another_top))
+
+                        another_not_me_top = []
+                        for word in another_words:
+                            if word[0] not in all_words_me:
+                                another_not_me_top.append(word)
+
+                        another_not_me_words_count = len(another_not_me_top)
+                        another_not_me_top = another_not_me_top[:10]
+                        another_not_me_top = list(map(lambda x: '**' + str(x[0]) + '** (' + str(x[1]) + ')', another_not_me_top))
 
                     results.append('Сообщений '+another_name+': {0:0.3f} Kb.'.format(msg_len_another/1024))
                     results.append('Сообщений '+me_name+': {0:0.3f} Kb.'.format(msg_len_me/1024))
@@ -900,6 +927,12 @@ class StatusController:
                         results.append('Самые редкие слова ('+valid_word_types_str+') ' + another_name + ' в диалогах: ' + (", ".join(another_last_cnt)) + '')
                         results.append('')
                         results.append('Самые редкие слова ('+valid_word_types_str+') ' + me_name + ' в диалогах: ' + (", ".join(me_last_cnt)) + '')
+                        if me_not_another_words_count > 0:
+                            results.append('')
+                            results.append('Слова ' + me_name + ' ('+valid_word_types_str+'), которые ' + another_name + ' ни разу не использовал: **' + str(me_not_another_words_count) +'** шт. Самые частые: ' + (", ".join(me_not_another_top)) + '')
+                        if another_not_me_words_count > 0:
+                            results.append('')
+                            results.append('Слова ' + another_name + ' ('+valid_word_types_str+'), которые ' + me_name + ' ни разу не использовал: **' + str(another_not_me_words_count) +'** шт. Самые частые: ' + (", ".join(another_not_me_top)) + '')
 
         return {
             'results': results,
