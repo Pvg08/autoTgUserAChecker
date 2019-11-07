@@ -6,7 +6,7 @@ from datetime import datetime
 
 from bot_action_branch import BotActionBranch
 from branch_insta_stories import InstaStoriesBranch
-from helper_functions import MainHelper
+from helper_functions import MainHelper, CacheHelper
 
 
 class InstaBranch(BotActionBranch):
@@ -202,12 +202,6 @@ class InstaBranch(BotActionBranch):
         cookie_expiry = api.cookie_jar.auth_expires
         print('Instagram: Cookie Expiry: {0!s}'.format(datetime.fromtimestamp(cookie_expiry).strftime('%Y-%m-%d %H:%M:%S')))
 
-    def fetch_user_id(self, username):
-        info = self.api.username_info(username)
-        if info and 'user' in info:
-            return info['user']['pk']
-        return None
-
     def can_use_branch(self, user_id):
         return self.has_insta_lib and self.insta_username and self.insta_password
 
@@ -240,6 +234,9 @@ class InstaBranch(BotActionBranch):
         return base_str
 
     def get_all_followers(self, api_user_id):
+        cached_data = CacheHelper().get_from_cache('get_all_followers', api_user_id)
+        if cached_data is not None:
+            return cached_data
         followers = []
         uuid = self.api.generate_uuid()
         results = self.api.user_followers(api_user_id, uuid, query='')
@@ -250,9 +247,13 @@ class InstaBranch(BotActionBranch):
             followers.extend(results.get('users', []))
             print('%d followers loaded.' % len(followers))
             next_max_id = results.get('next_max_id')
+        CacheHelper().save_to_cache('get_all_followers', api_user_id, followers)
         return followers
 
     def get_all_following(self, api_user_id):
+        cached_data = CacheHelper().get_from_cache('get_all_following', api_user_id)
+        if cached_data is not None:
+            return cached_data
         following = []
         uuid = self.api.generate_uuid()
         results = self.api.user_following(api_user_id, uuid, query='')
@@ -263,9 +264,29 @@ class InstaBranch(BotActionBranch):
             following.extend(results.get('users', []))
             print('%d following loaded.' % len(following))
             next_max_id = results.get('next_max_id')
+        CacheHelper().save_to_cache('get_all_following', api_user_id, following)
         return following
 
+    def get_media_likers(self, api_user_id, media_id):
+        cached_data = CacheHelper().get_from_cache('get_media_likers', media_id, sub_folder_key=api_user_id)
+        if cached_data is not None:
+            return cached_data
+        likers = self.api.media_likers(media_id)
+        CacheHelper().save_to_cache('get_media_likers', media_id, likers, sub_folder_key=api_user_id)
+        return likers
+
+    def get_media_n_comments(self, api_user_id, media_id, n=150):
+        cached_data = CacheHelper().get_from_cache('get_media_n_comments', [media_id, n], sub_folder_key=api_user_id)
+        if cached_data is not None:
+            return cached_data
+        comments = self.api.media_n_comments(media_id, n)
+        CacheHelper().save_to_cache('get_media_n_comments', [media_id, n], comments, sub_folder_key=api_user_id)
+        return comments
+
     async def get_all_feed(self, api_user_id, max_count, from_id):
+        cached_data = CacheHelper().get_from_cache('get_all_feed', [api_user_id, max_count])
+        if cached_data is not None:
+            return cached_data
         feed_items = []
         results = self.api.user_feed(api_user_id)
         feed_items.extend(results.get('items', []))
@@ -277,6 +298,7 @@ class InstaBranch(BotActionBranch):
             feed_items.extend(results.get('items', []))
             print('%d feed_items loaded.' % len(feed_items))
             next_max_id = results.get('next_max_id')
+        CacheHelper().save_to_cache('get_all_feed', [api_user_id, max_count], feed_items)
         return feed_items
 
     async def get_user_info_by_username(self, from_id, username):
@@ -288,6 +310,9 @@ class InstaBranch(BotActionBranch):
                 print("Can't initialize instagram client!")
             return
         username = str(username).lower().strip()
+        cached_data = CacheHelper().get_from_cache('get_user_info_by_username', username)
+        if cached_data is not None:
+            return cached_data
         try:
             print('Instagram: Getting info for user '+username+'...')
             info = self.api.username_info(username)
@@ -299,6 +324,7 @@ class InstaBranch(BotActionBranch):
                 await self.send_message_to_user(from_id, 'Пользователь с именем "'+username+'" не найден!')
                 return None
             print('Instagram: User ' + username + ' was found...')
+            CacheHelper().save_to_cache('get_user_info_by_username', username, info)
             return info
         except:
             # traceback.print_exc()
@@ -497,7 +523,7 @@ class InstaBranch(BotActionBranch):
                     comments = f_item['preview_comments']
                 else:
                     print('Getting comments for ' + str(f_item['pk']))
-                    comments = self.api.media_n_comments(f_item['pk'], n=150)
+                    comments = self.get_media_n_comments(user_id, f_item['pk'], n=150)
                 all_feed_comments = all_feed_comments + comments
                 await asyncio.sleep(0.4)
                 await self.resend_typing_to_user(from_id)
@@ -551,7 +577,7 @@ class InstaBranch(BotActionBranch):
         all_feed_likes = []
 
         for f_item in feed_items:
-            likers = self.api.media_likers(f_item['pk'])
+            likers = self.get_media_likers(user_id, f_item['pk'])
             all_feed_likes = all_feed_likes + likers['users']
             await asyncio.sleep(0.4)
             await self.resend_typing_to_user(from_id)

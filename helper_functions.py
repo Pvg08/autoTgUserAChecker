@@ -1,7 +1,10 @@
 import configparser
+import json
 import os
+import stat
 import sys
 
+import time
 from playsound import playsound
 
 
@@ -64,8 +67,48 @@ class MainHelper(metaclass=MetaSingleton):
                 return True
         return False
 
-    def get_from_cache(self, data_name, key, default=None):
-        pass
 
-    def save_to_cache(self, data_name, key, data):
-        pass
+class CacheHelper(metaclass=MetaSingleton):
+
+    @staticmethod
+    def cache_key_to_str(key):
+        if isinstance(key, dict):
+            key = "_".join([str(x[0])+'-'+str(x[1]) for x in key.items()])
+        elif isinstance(key, list):
+            key = "_".join([str(x) for x in key])
+        else:
+            key = str(key)
+        return key
+
+    @staticmethod
+    def file_age_in_seconds(pathname):
+        return time.time() - os.stat(pathname)[stat.ST_MTIME]
+
+    def get_from_cache(self, data_name, key, max_age_seconds=86400, default=None, sub_folder_key=None):
+        file_name = MainHelper().get_config_root_folder_value('main', 'cache_folder') + '/' + data_name
+        if sub_folder_key:
+            sub_folder_key = self.cache_key_to_str(sub_folder_key)
+            file_name = file_name + '/' + sub_folder_key
+        file_name = file_name + '/' + self.cache_key_to_str(key) + '.json'
+        try:
+            file_age = self.file_age_in_seconds(file_name)
+            print('Age of cache file ' + file_name + ' is ' + str(file_age))
+            if file_age <= max_age_seconds:
+                with open(file_name) as json_data:
+                    return json.load(json_data)
+        except OSError:
+            pass
+        return default
+
+    def save_to_cache(self, data_name, key, data_object, sub_folder_key=None):
+        folder = MainHelper().get_config_root_folder_value('main', 'cache_folder') + '/' + data_name + '/'
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+        if sub_folder_key:
+            sub_folder_key = self.cache_key_to_str(sub_folder_key)
+            folder = folder + sub_folder_key + '/'
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+        file_name = folder + self.cache_key_to_str(key) + '.json'
+        with open(file_name, 'w') as json_file:
+            json.dump(data_object, json_file)
