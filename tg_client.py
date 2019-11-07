@@ -23,6 +23,7 @@ from telethon.utils import get_display_name, is_list_like
 
 from bot_controller import BotController
 from entity_controller import EntityController
+from helper_functions import MainHelper
 from periodic import Periodic
 from status_controller import StatusController
 from tg_bot import InteractiveTelegramBot
@@ -35,20 +36,20 @@ class InteractiveTelegramClient(TelegramClient):
 
         self.client_loop = loop
 
-        config = configparser.RawConfigParser(allow_no_value=True)
-        config.read(config_file, encoding='utf-8')
-        session_user_id = config['main']['session_fname']
-        api_id = config['main']['api_id']
-        api_hash = config['main']['api_hash']
-        phone = config['main']['phone']
+        MainHelper().init_config(config_file)
 
-        proxy_use = int(config['main']['use_proxy'])
-        proxy_type = str(config['main']['proxy_type'])
-        proxy_host = str(config['main']['proxy_host'])
-        proxy_port = str(config['main']['proxy_port'])
-        proxy_login = str(config['main']['proxy_login'])
-        proxy_password = str(config['main']['proxy_password'])
-        proxy_secret = str(config['main']['proxy_secret'])
+        session_user_id = MainHelper().get_config_value('main', 'session_fname')
+        api_id = MainHelper().get_config_value('main', 'api_id')
+        api_hash = MainHelper().get_config_value('main', 'api_hash')
+        phone = MainHelper().get_config_value('main', 'phone')
+
+        proxy_use = MainHelper().get_config_int_value('main', 'use_proxy')
+        proxy_type = MainHelper().get_config_value('main', 'proxy_type')
+        proxy_host = MainHelper().get_config_value('main', 'proxy_host')
+        proxy_port = MainHelper().get_config_value('main', 'proxy_port')
+        proxy_login = MainHelper().get_config_value('main', 'proxy_login')
+        proxy_password = MainHelper().get_config_value('main', 'proxy_password')
+        proxy_secret = MainHelper().get_config_value('main', 'proxy_secret')
         if proxy_port:
             proxy_port = int(proxy_port)
         is_mtproxy = False
@@ -109,13 +110,12 @@ class InteractiveTelegramClient(TelegramClient):
                                  'Please enter your password: ')
                     self_user = self.client_loop.run_until_complete(self.sign_in(password=pw))
 
-        self.config = config
         self.db_conn = self.get_db('client_data.db')
         self.on_timer_callbacks = []
         self.entity_controller = EntityController(self)
 
-        if str(config['tg_bot']['session_fname']) and str(config['tg_bot']['token']):
-            self.tg_bot = InteractiveTelegramBot(str(config['tg_bot']['session_fname']), api_id, api_hash, cl_conn, proxy, self)
+        if MainHelper().get_config_value('tg_bot', 'session_fname') and MainHelper().get_config_value('tg_bot', 'token'):
+            self.tg_bot = InteractiveTelegramBot(MainHelper().get_config_value('tg_bot', 'session_fname'), api_id, api_hash, cl_conn, proxy, self)
             self.tg_bot.do_start()
         else:
             self.tg_bot = None
@@ -151,9 +151,6 @@ class InteractiveTelegramClient(TelegramClient):
     async def async_input(self, prompt):
         print(prompt, end='', flush=True)
         return (await self.client_loop.run_in_executor(None, sys.stdin.readline)).rstrip()
-
-    def is_set_config_event(self, event_name):
-        return (event_name in self.config['events']) and int(self.config['events'][event_name]) == 1
 
     @staticmethod
     def dict_factory(cursor, row):
@@ -336,7 +333,7 @@ class InteractiveTelegramClient(TelegramClient):
             if type(update) in [UpdateEditChannelMessage, UpdateEditMessage, UpdateNewChannelMessage,
                                 UpdateShortMessage, UpdateShortChatMessage, UpdateNewMessage]:
                 data = update.to_dict()
-                if not self.is_set_config_event(data['_']):
+                if not MainHelper().is_set_config_event(data['_']):
                     return
                 # print(update)
 
@@ -481,13 +478,13 @@ class InteractiveTelegramClient(TelegramClient):
 
                     if message and entity_id:
                         if (
-                                (int(self.config['messages']['write_messages_to_database']) == 1) and
+                                (MainHelper().get_config_int_value('messages', 'write_messages_to_database') == 1) and
                                 (
-                                    ((e_type == 'User') and (int(self.config['messages']['event_include_users']) == 1)) or
-                                    ((e_type == 'Bot') and (int(self.config['messages']['event_include_bots']) == 1)) or
-                                    ((e_type == 'Chat') and (int(self.config['messages']['event_include_chats']) == 1)) or
-                                    ((e_type == 'Megagroup') and (int(self.config['messages']['event_include_megagroups']) == 1)) or
-                                    ((e_type == 'Channel') and (int(self.config['messages']['event_include_channels']) == 1))
+                                    ((e_type == 'User') and (MainHelper().get_config_int_value('messages', 'event_include_users') == 1)) or
+                                    ((e_type == 'Bot') and (MainHelper().get_config_int_value('messages', 'event_include_bots') == 1)) or
+                                    ((e_type == 'Chat') and (MainHelper().get_config_int_value('messages', 'event_include_chats') == 1)) or
+                                    ((e_type == 'Megagroup') and (MainHelper().get_config_int_value('messages', 'event_include_megagroups') == 1)) or
+                                    ((e_type == 'Channel') and (MainHelper().get_config_int_value('messages', 'event_include_channels') == 1))
                                 )
                         ):
                             version = self.add_message_to_db(entity_id, e_type, from_id, to_id, message_id, message, message_date, 0)
@@ -509,11 +506,11 @@ class InteractiveTelegramClient(TelegramClient):
                     need_show_message = False
                     if message and not reply_skip_message:
                         if (
-                                ((e_type == 'User') and (int(self.config['messages']['display_user_messages']) == 1)) or
-                                ((e_type == 'Bot') and (int(self.config['messages']['display_bot_messages']) == 1)) or
-                                ((e_type == 'Chat') and (int(self.config['messages']['display_chat_messages']) == 1)) or
-                                ((e_type == 'Megagroup') and (int(self.config['messages']['display_megagroup_messages']) == 1)) or
-                                ((e_type == 'Channel') and (int(self.config['messages']['display_channel_messages']) == 1))
+                                ((e_type == 'User') and (MainHelper().get_config_int_value('messages', 'display_user_messages') == 1)) or
+                                ((e_type == 'Bot') and (MainHelper().get_config_int_value('messages', 'display_bot_messages') == 1)) or
+                                ((e_type == 'Chat') and (MainHelper().get_config_int_value('messages', 'display_chat_messages') == 1)) or
+                                ((e_type == 'Megagroup') and (MainHelper().get_config_int_value('messages', 'display_megagroup_messages') == 1)) or
+                                ((e_type == 'Channel') and (MainHelper().get_config_int_value('messages', 'display_channel_messages') == 1))
                         ):
                             need_show_message = True
 
@@ -525,14 +522,14 @@ class InteractiveTelegramClient(TelegramClient):
                     else:
                         print(StatusController.datetime_to_str(message_date) + ' ' + a_type + ' "' + to_name + '" ' + a_post_type)
 
-                    if is_message_new and entity_id and (int(self.config['notify_all']['notify_when_new_message']) == 1):
-                        playsound(self.config['notify_sounds']['notify_when_new_message_sound'], False)
-                    elif is_message_new and entity_id and (int(self.config['notify_selected']['notify_when_new_message']) == 1) and (self.selected_user_activity == entity_id):
-                        playsound(self.config['notify_sounds']['notify_when_new_message_sound'], False)
-                    elif is_message_edit and ((not reply_skip_message) or (e_type == 'User')) and entity_id and (int(self.config['notify_all']['notify_when_editing']) == 1):
-                        playsound(self.config['notify_sounds']['notify_when_editing_sound'], False)
-                    elif is_message_edit and ((not reply_skip_message) or (e_type == 'User')) and entity_id and (int(self.config['notify_selected']['notify_when_editing']) == 1) and (self.selected_user_activity == entity_id):
-                        playsound(self.config['notify_sounds']['notify_when_editing_sound'], False)
+                    if is_message_new and entity_id and MainHelper().play_notify_sound('notify_when_new_message'):
+                        pass
+                    elif is_message_new and entity_id and (self.selected_user_activity == entity_id) and MainHelper().play_notify_sound('notify_when_new_message', True):
+                        pass
+                    elif is_message_edit and ((not reply_skip_message) or (e_type == 'User')) and entity_id and MainHelper().play_notify_sound('notify_when_editing'):
+                        pass
+                    elif is_message_edit and ((not reply_skip_message) or (e_type == 'User')) and entity_id and (self.selected_user_activity == entity_id) and MainHelper().play_notify_sound('notify_when_editing', True):
+                        pass
 
                     is_bot_message = False
                     if is_message_new and (e_type in ['User']) and (
@@ -546,7 +543,7 @@ class InteractiveTelegramClient(TelegramClient):
                     ):
                         is_bot_message = await self.bot_controller.bot_check_user_message(message, from_id, entity_id, e_type)
 
-                    if need_show_message and is_message_edit and (int(self.config['messages']['display_edit_messages']) == 1):
+                    if need_show_message and is_message_edit and (MainHelper().get_config_int_value('messages', 'display_edit_messages') == 1):
                         need_show_message = False
 
                     if need_show_message and not is_bot_message:
@@ -560,7 +557,7 @@ class InteractiveTelegramClient(TelegramClient):
 
             elif type(update) in [UpdateDeleteChannelMessages, UpdateDeleteMessages]:
                 data = update.to_dict()
-                if not self.is_set_config_event(data['_']):
+                if not MainHelper().is_set_config_event(data['_']):
                     return
 
                 if ('channel_id' in data) and data['channel_id']:
@@ -571,10 +568,10 @@ class InteractiveTelegramClient(TelegramClient):
                         print(StatusController.datetime_to_str(datetime.now()) + ' Remove messages ' + str(data['messages']) + ' from unknown dialog (no variants)')
                         return
 
-                if int(self.config['notify_all']['notify_when_removing']) == 1:
-                    playsound(self.config['notify_sounds']['notify_when_removing_sound'], False)
-                elif (int(self.config['notify_selected']['notify_when_removing']) == 1) and (self.selected_user_activity == entity_id):
-                    playsound(self.config['notify_sounds']['notify_when_removing_sound'], False)
+                if MainHelper().play_notify_sound('notify_when_removing'):
+                    pass
+                elif (self.selected_user_activity == entity_id) and MainHelper().play_notify_sound('notify_when_removing', True):
+                    pass
 
                 for msg_id in data['messages']:
                     msg = self.remove_message_db(msg_id, entity_id)
@@ -597,7 +594,7 @@ class InteractiveTelegramClient(TelegramClient):
                         if ('version' in msg) and (msg['version'] > 1):
                             msg_version = ' [version '+str(msg['version'])+']'
                         print(StatusController.datetime_to_str(datetime.now()) + ' Remove'+msg_from_name+' message ' + str(msg_id) + msg_version + ' from '+dialog_with_name+' "' + msg_entity_name + '"')
-                        if msg['message'] and (int(self.config['messages']['display_remove_messages']) == 1):
+                        if msg['message'] and (MainHelper().get_config_int_value('messages', 'display_remove_messages') == 1):
                             print('<<< ' + str(msg['message']).replace('\n', '\\n'))
 
             elif type(update) == UpdateReadHistoryOutbox:
@@ -605,12 +602,11 @@ class InteractiveTelegramClient(TelegramClient):
                 message_info = await self.collect_message_info(data['max_id'], update.peer)
                 if message_info:
                     if self.tg_bot and (self.tg_bot.bot_entity_id == message_info['to_id']):
-                        if int(self.config['notify_all']['notify_when_my_bot_reads_message']) == 1:
-                            playsound(self.config['notify_sounds']['notify_when_reads_message_sound'], False)
-                    elif int(self.config['notify_all']['notify_when_reads_message']) == 1:
-                        playsound(self.config['notify_sounds']['notify_when_reads_message_sound'], False)
-                    elif (int(self.config['notify_selected']['notify_when_reads_message']) == 1) and (self.selected_user_activity == message_info['peer_id']):
-                        playsound(self.config['notify_sounds']['notify_when_reads_message_sound'], False)
+                        MainHelper().play_notify_sound('notify_when_my_bot_reads_message')
+                    elif MainHelper().play_notify_sound('notify_when_reads_message'):
+                        pass
+                    elif (self.selected_user_activity == message_info['peer_id']) and MainHelper().play_notify_sound('notify_when_reads_message', True):
+                        pass
                     print(StatusController.datetime_to_str(datetime.now()) + ' "' + message_info['peer_name'] + '" reads message ' + str(data['max_id']) + ' from dialog with "' + message_info['not_peer_name'] + '"')
 
             elif type(update) in [UpdateMessagePoll, UpdateUserStatus, UpdateReadChannelInbox, UpdateReadHistoryInbox,
@@ -700,7 +696,7 @@ class InteractiveTelegramClient(TelegramClient):
             data = update.original_update.to_dict()
             if (data['_'] == 'UpdateUserStatus') and (data['user_id'] == self.me_user_id) and (data['status']['_'] == 'UserStatusOnline'):
                 self.me_last_activity = datetime.now()
-            if not self.is_set_config_event(data['_']):
+            if not MainHelper().is_set_config_event(data['_']):
                 return
             if data['_'] == 'UpdateUserStatus':
                 if (
@@ -709,20 +705,20 @@ class InteractiveTelegramClient(TelegramClient):
                         (self.log_user_activity == data['user_id'])
                     )
                 ):
-                    if (data['status']['_'] == 'UserStatusOnline') and (int(self.config['notify_all']['notify_when_online']) == 1):
-                        playsound(self.config['notify_sounds']['notify_when_online_sound'], False)
-                    elif (data['status']['_'] == 'UserStatusOnline') and (int(self.config['notify_selected']['notify_when_online']) == 1) and (self.selected_user_activity == data['user_id']):
-                        playsound(self.config['notify_sounds']['notify_when_online_sound'], False)
+                    if (data['status']['_'] == 'UserStatusOnline') and MainHelper().play_notify_sound('notify_when_online'):
+                        pass
+                    elif (data['status']['_'] == 'UserStatusOnline') and (self.selected_user_activity == data['user_id']) and MainHelper().play_notify_sound('notify_when_online', True):
+                        pass
                     await self.add_current_status(update.original_update.status, data['user_id'])
             elif data['_'] in ['UpdateUserTyping', 'UpdateChatUserTyping']:
                 login = await self.get_entity_name(data['user_id'], 'User')
                 where_typing = 'me'
                 if (data['_'] == 'UpdateChatUserTyping') and data['chat_id']:
                     where_typing = await self.get_entity_name(data['chat_id'])
-                if int(self.config['notify_all']['notify_when_typing']) == 1:
-                    playsound(self.config['notify_sounds']['notify_when_typing_sound'], False)
-                elif (int(self.config['notify_selected']['notify_when_typing']) == 1) and (self.selected_user_activity == data['user_id']):
-                    playsound(self.config['notify_sounds']['notify_when_typing_sound'], False)
+                if MainHelper().play_notify_sound('notify_when_typing'):
+                    pass
+                elif (self.selected_user_activity == data['user_id']) and MainHelper().play_notify_sound('notify_when_typing', True):
+                    pass
                 print(StatusController.datetime_to_str(datetime.now()) + ' "' + login + '" typing -> ' + where_typing + "...")
             else:
                 pass
@@ -770,13 +766,13 @@ class InteractiveTelegramClient(TelegramClient):
         p = Periodic(self.periodic_check, 62)
         await p.start()
 
-        self.log_user_activity = (int(self.config['activity']['write_all_activity_to_database']) == 1)
+        self.log_user_activity = (MainHelper().get_config_int_value('activity', 'write_all_activity_to_database') == 1)
 
         while True:
             entity = None
             self.bot_controller.stop_chat_with_all_users()
             self.selected_user_activity = False
-            dialog_count = int(self.config['messages']['initial_dialogs_limit'])
+            dialog_count = MainHelper().get_config_int_value('messages', 'initial_dialogs_limit')
             if dialog_count <= 0:
                 dialog_count = None
             t_dialogs = await self.get_dialogs(limit=dialog_count, archived=False, folder=0)
@@ -794,30 +790,30 @@ class InteractiveTelegramClient(TelegramClient):
                 t_dial_entity_ids.append(e_id)
 
                 show_e_types = ['User']
-                if int(self.config['messages']['initial_dialogs_include_bots']) == 1:
+                if MainHelper().get_config_int_value('messages', 'initial_dialogs_include_bots') == 1:
                     show_e_types.append('Bot')
-                if int(self.config['messages']['initial_dialogs_include_chats']) == 1:
+                if MainHelper().get_config_int_value('messages', 'initial_dialogs_include_chats') == 1:
                     show_e_types.append('Chat')
-                if int(self.config['messages']['initial_dialogs_include_channels']) == 1:
+                if MainHelper().get_config_int_value('messages', 'initial_dialogs_include_channels') == 1:
                     show_e_types.append('Channel')
-                if int(self.config['messages']['initial_dialogs_include_megagroups']) == 1:
+                if MainHelper().get_config_int_value('messages', 'initial_dialogs_include_megagroups') == 1:
                     show_e_types.append('Megagroup')
 
-                if e_id and (int(self.config['messages']['write_messages_to_database']) == 1):
-                    initial_limit = int(self.config['messages']['initial_messages_count'])
+                if e_id and (MainHelper().get_config_int_value('messages', 'write_messages_to_database') == 1):
+                    initial_limit = MainHelper().get_config_int_value('messages', 'initial_messages_count')
                     if (
                             (initial_limit > 0) and
                             (
-                                ((e_type == 'User') and (int(self.config['messages']['initial_include_users']) == 1)) or
-                                ((e_type == 'Bot') and (int(self.config['messages']['initial_include_bots']) == 1)) or
-                                ((e_type == 'Chat') and (int(self.config['messages']['initial_include_chats']) == 1)) or
-                                ((e_type == 'Megagroup') and (int(self.config['messages']['initial_include_megagroups']) == 1)) or
-                                ((e_type == 'Channel') and (int(self.config['messages']['initial_include_channels']) == 1))
+                                ((e_type == 'User') and (MainHelper().get_config_int_value('messages', 'initial_include_users') == 1)) or
+                                ((e_type == 'Bot') and (MainHelper().get_config_int_value('messages', 'initial_include_bots') == 1)) or
+                                ((e_type == 'Chat') and (MainHelper().get_config_int_value('messages', 'initial_include_chats') == 1)) or
+                                ((e_type == 'Megagroup') and (MainHelper().get_config_int_value('messages', 'initial_include_megagroups') == 1)) or
+                                ((e_type == 'Channel') and (MainHelper().get_config_int_value('messages', 'initial_include_channels') == 1))
                             )
                     ):
                         print("Getting messages for dialog with " + get_display_name(t_dialog.entity))
                         await self.entity_controller.add_entity_dialog_messages_to_db(t_dialog.entity, initial_limit)
-                        await asyncio.sleep(float(self.config['messages']['initial_messages_delay']))
+                        await asyncio.sleep(MainHelper().get_config_float_value('messages', 'initial_messages_delay'))
                 if (e_type in show_e_types) and get_display_name(t_dialog.entity):
                     dialogs.append(t_dialog)
 
@@ -956,7 +952,7 @@ class InteractiveTelegramClient(TelegramClient):
                     while True:
                         msg = await self.async_input('')
                         if msg == '!L':
-                            self.log_user_activity = (int(self.config['activity']['write_all_activity_to_database']) == 1)
+                            self.log_user_activity = (MainHelper().get_config_int_value('activity', 'write_all_activity_to_database') == 1)
                             break
                         elif msg == '!C':
                             await self.connection_check_reconnect()

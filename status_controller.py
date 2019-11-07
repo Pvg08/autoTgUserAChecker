@@ -12,6 +12,8 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
 
+from helper_functions import MainHelper
+
 
 class StatusController:
 
@@ -403,11 +405,11 @@ class StatusController:
         # fig.update_yaxes(type="log")
 
         if as_img:
-            if self.tg_client.config['main']['orca_path']:
+            if MainHelper().get_config_value('main', 'orca_path'):
                 try:
-                    plotly.io.orca.config.executable = self.tg_client.config['main']['orca_path']
+                    plotly.io.orca.config.executable = MainHelper().get_config_value('main', 'orca_path')
                     fname = str(datetime.now().timestamp()) + '_' + hashlib.md5(plot_data['title'].encode('utf-8')).hexdigest()
-                    fname = self.tg_client.config['main']['files_folder'] + "/" + fname + ".png"
+                    fname = MainHelper().get_config_root_folder_value('main', 'files_folder') + "/" + fname + ".png"
                     fig.write_image(fname, format="png", width=1920, height=1080)
                     return fname
                 except:

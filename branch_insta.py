@@ -6,6 +6,7 @@ from datetime import datetime
 
 from bot_action_branch import BotActionBranch
 from branch_insta_stories import InstaStoriesBranch
+from helper_functions import MainHelper
 
 
 class InstaBranch(BotActionBranch):
@@ -24,9 +25,9 @@ class InstaBranch(BotActionBranch):
             from libs.instagram_private_api import Client
             print('Instagram lib was found!')
             self.has_insta_lib = True
-            self.insta_username = self.get_config_value('instagram', 'username')
-            self.insta_password = self.get_config_value('instagram', 'password')
-            self.cache_file = self.get_config_value('instagram', 'cache_file')
+            self.insta_username = MainHelper().get_config_value('instagram', 'username')
+            self.insta_password = MainHelper().get_config_value('instagram', 'password')
+            self.cache_file = MainHelper().get_config_root_file_value('instagram', 'cache_file')
         except ImportError:
             pass
 

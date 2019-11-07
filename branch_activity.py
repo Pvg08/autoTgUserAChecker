@@ -4,6 +4,7 @@ from datetime import timedelta, datetime
 from telethon.tl.types import UserStatusOnline, UserStatusOffline
 
 from bot_action_branch import BotActionBranch
+from helper_functions import MainHelper
 from status_controller import StatusController
 
 
@@ -111,7 +112,7 @@ class ActivityBranch(BotActionBranch):
         last_str = ''
         if a_type=="plot_img":
             last_str = str(status_results.pop())
-        if last_str and last_str.startswith(self.get_config_value('main', 'files_folder') + "/"):
+        if last_str and last_str.startswith(MainHelper().get_config_root_folder_value('main', 'files_folder') + "/"):
             u_link = await self.user_link(for_id, for_name)
             await self.send_file_to_user(send_to_id, last_str, img_caption.replace('[user]', u_link), True)
         else:

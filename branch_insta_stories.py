@@ -9,6 +9,7 @@ import requests
 from playsound import playsound
 
 from bot_action_branch import BotActionBranch
+from helper_functions import MainHelper
 from status_controller import StatusController
 
 
@@ -160,14 +161,14 @@ class InstaStoriesBranch(BotActionBranch):
                 story_records[id] = entry
                 old_viewers = '[]'
                 print('New story for user ' + str(username) + ' was found: ' + story_fname)
-                playsound(self.get_config_value('notify_sounds', 'notify_when_new_insta_story'), False)
+                MainHelper().play_notify_sound('notify_when_new_insta_story')
             else:
                 dups = dups + 1
                 old_viewers = story_records[id]['viewers']
 
             if old_viewers != viewers:
                 if viewers != '[]':
-                    playsound(self.get_config_value('notify_sounds', 'notify_when_new_insta_view'), False)
+                    MainHelper().play_notify_sound('notify_when_new_insta_view')
                 old_viewers = json.loads(old_viewers)
                 append_strs = []
 
@@ -181,7 +182,7 @@ class InstaStoriesBranch(BotActionBranch):
                         print('!!! User ' + new_data['full_name'] + ' watched your story ' + story_fname)
 
                 if len(append_strs) > 0:
-                    stories_folder = self.get_config_value('instagram', 'stories_folder')
+                    stories_folder = MainHelper().get_config_root_folder_value('instagram', 'stories_folder')
                     if not os.path.exists(stories_folder):
                         os.makedirs(stories_folder)
                     file_path = stories_folder + "/" + str(username)
@@ -230,7 +231,7 @@ class InstaStoriesBranch(BotActionBranch):
 
     def download_stories(self):
 
-        stories_folder = self.get_config_value('instagram', 'stories_folder')
+        stories_folder = MainHelper().get_config_root_folder_value('instagram', 'stories_folder')
         to_delete, to_update = [], []
         if not os.path.exists(stories_folder):
             os.makedirs(stories_folder)
@@ -290,7 +291,7 @@ class InstaStoriesBranch(BotActionBranch):
     async def on_timer(self):
         if not self.branch_parent.has_insta_lib:
             return
-        if self.last_stories_check_time and (datetime.now() - self.last_stories_check_time).total_seconds() < int(self.get_config_value('instagram', 'check_story_delay_seconds')):
+        if self.last_stories_check_time and (datetime.now() - self.last_stories_check_time).total_seconds() < MainHelper().get_config_int_value('instagram', 'check_story_delay_seconds'):
             return
         self.last_stories_check_time = datetime.now()
 

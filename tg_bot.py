@@ -7,6 +7,7 @@ from telethon.events import NewMessage
 from telethon.tl.types import UpdateNewMessage, PeerUser, UpdateBotCallbackQuery, Message
 
 from bot_action_branch import BotActionBranch
+from helper_functions import MainHelper
 from status_controller import StatusController
 
 
@@ -23,10 +24,10 @@ class InteractiveTelegramBot(TelegramClient):
         sent_count = 0
         try:
             version_messages = self.get_version_messages()
-            new_ver = float(self.tg_client.config['main']['actual_version'])
-            new_ver_title = str(self.tg_client.config['main']['new_version_title'])
-            new_ver_help = str(self.tg_client.config['main']['new_version_help'])
-            result_title = new_ver_title.replace('[actual_version]', "{0:0.2f}".format(new_ver)).replace('[bot_name]', self.tg_client.config['tg_bot']['bot_username'])
+            new_ver = MainHelper().get_config_float_value('main', 'actual_version')
+            new_ver_title = MainHelper().get_config_value('main', 'new_version_title')
+            new_ver_help = MainHelper().get_config_value('main', 'new_version_help')
+            result_title = new_ver_title.replace('[actual_version]', "{0:0.2f}".format(new_ver)).replace('[bot_name]', MainHelper().get_config_value('tg_bot', 'bot_username'))
             result_title = result_title + '\n' + new_ver_help
             chats = self.tg_client.entity_controller.get_all_bot_users_chats()
             if chats and len(chats) > 0:
@@ -99,13 +100,12 @@ class InteractiveTelegramBot(TelegramClient):
             return
         try:
             if not self.bot_entity:
-                self.bot_entity = await self.get_entity(self.tg_client.config['tg_bot']['bot_username'])
+                self.bot_entity = await self.get_entity(MainHelper().get_config_value('tg_bot', 'bot_username'))
                 self.bot_entity_id = self.bot_entity.id
             data = event.original_update
             if data.message.from_id == self.bot_entity_id:
                 return
-            if int(self.tg_client.config['notify_all']['notify_when_my_bot_message']) == 1:
-                playsound(self.tg_client.config['notify_sounds']['notify_when_my_bot_message_sound'], False)
+            MainHelper().play_notify_sound('notify_when_my_bot_message')
             if data.message.id and data.message.from_id and (data.message.from_id != self.tg_client.me_user_id):
                 msg_entity_name = await self.tg_client.get_entity_name(data.message.from_id, 'User')
                 if msg_entity_name:
@@ -139,7 +139,7 @@ class InteractiveTelegramBot(TelegramClient):
             self.tg_client.entity_controller.add_entity_db_name(bot_chat.user_id, 'User', ee_name)
             self.tg_client.entity_controller.save_user_bot_chat(bot_chat)
             if data.message.message == '/start':
-                self.tg_client.entity_controller.save_user_bot_last_version(bot_chat.user_id, float(self.tg_client.config['main']['actual_version']))
+                self.tg_client.entity_controller.save_user_bot_last_version(bot_chat.user_id, MainHelper().get_config_float_value('main', 'actual_version'))
             if data.message.id:
                 self.tg_client.bot_controller.set_message_for_user(data.message.from_id, data.message.id, False)
             await self.tg_client.bot_controller.bot_command(data.message.message, data.message.from_id, self.bot_entity_id, 'Bot')
@@ -148,6 +148,6 @@ class InteractiveTelegramBot(TelegramClient):
 
     def do_start(self):
         print('Starting of bot')
-        self.start(bot_token=self.tg_client.config['tg_bot']['token'])
+        self.start(bot_token=MainHelper().get_config_value('tg_bot', 'token'))
         self.add_event_handler(self.message_handler, event=events.NewMessage)
         self.add_event_handler(self.callback_handler, event=events.CallbackQuery)

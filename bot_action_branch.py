@@ -93,11 +93,6 @@ class BotActionBranch:
     def can_use_branch(self, user_id):
         return True
 
-    def get_config_value(self, section, param):
-        if (section in self.tg_bot_controller.tg_client.config) and (param in self.tg_bot_controller.tg_client.config[section]):
-            return self.tg_bot_controller.tg_client.config[section][param]
-        return ''
-
     async def user_link(self, user_id, user_name=None):
         if not user_name:
             user_name = await self.tg_bot_controller.tg_client.get_entity_name(user_id, 'User')

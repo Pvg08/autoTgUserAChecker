@@ -12,6 +12,7 @@ from branch_activity import ActivityBranch
 from branch_dialogue import DialogueBranch
 from branch_insta import InstaBranch
 from branch_tools import ToolsBranch
+from helper_functions import MainHelper
 from status_controller import StatusController
 
 
@@ -20,7 +21,7 @@ class BotController(BotActionBranch):
     def __init__(self, tg_client):
         super().__init__(self, None, None)
         self.tg_client = tg_client
-        self.bot_answer_format_text = str(self.get_config_value('chat_bot', 'bot_answer_format'))
+        self.bot_answer_format_text = str(MainHelper().get_config_value('chat_bot', 'bot_answer_format'))
         self.users = {}
         self.right_levels = {
             '0': 'all',
@@ -230,15 +231,15 @@ class BotController(BotActionBranch):
 
     def chatbot_message_response(self, message_text, user_id):
         try:
-            weather_words = str(self.get_config_value('chat_bot', 'bot_weather_keywords'))
+            weather_words = str(MainHelper().get_config_value('chat_bot', 'bot_weather_keywords'))
             weather_words = weather_words.split('|')
             message_text_words = re.findall(r'\w+', message_text)
             intersect_words = set(message_text_words).intersection(weather_words)
-            is_weather = (len(intersect_words) > 0) and self.get_config_value('chat_bot', 'bot_weather_owm_api_key')
+            is_weather = (len(intersect_words) > 0) and MainHelper().get_config_value('chat_bot', 'bot_weather_owm_api_key')
             if not is_weather:
-                api = apiai.ApiAI(str(self.get_config_value('chat_bot', 'bot_client_token')), str(self.get_config_value('chat_bot', 'bot_session_name')) + '_' + str(user_id))
+                api = apiai.ApiAI(str(MainHelper().get_config_value('chat_bot', 'bot_client_token')), str(MainHelper().get_config_value('chat_bot', 'bot_session_name')) + '_' + str(user_id))
             else:
-                api = apiai.ApiAI(str(self.get_config_value('chat_bot', 'bot_client_token_weather')), str(self.get_config_value('chat_bot', 'bot_session_name_weather')) + '_' + str(user_id))
+                api = apiai.ApiAI(str(MainHelper().get_config_value('chat_bot', 'bot_client_token_weather')), str(MainHelper().get_config_value('chat_bot', 'bot_session_name_weather')) + '_' + str(user_id))
             request = api.text_request()
             request.lang = 'ru'
             request.query = message_text
@@ -249,8 +250,8 @@ class BotController(BotActionBranch):
                 if response_json['result']['parameters'] and response_json['result']['parameters']['address'] and response_json['result']['parameters']['address']['city']:
                     city = response_json['result']['parameters']['address']['city']
                 if not city:
-                    city = str(self.get_config_value('chat_bot', 'bot_weather_city_default'))
-                owm = pyowm.OWM(str(self.get_config_value('chat_bot', 'bot_weather_owm_api_key')), language="ru", use_ssl=True)
+                    city = str(MainHelper().get_config_value('chat_bot', 'bot_weather_city_default'))
+                owm = pyowm.OWM(str(MainHelper().get_config_value('chat_bot', 'bot_weather_owm_api_key')), language="ru", use_ssl=True)
                 observation = owm.weather_at_place(city)
                 w = observation.get_weather()
                 status = w.get_detailed_status() + ' (облачность '+str(w.get_clouds())+'%)'
@@ -276,30 +277,30 @@ class BotController(BotActionBranch):
                 return response
         except:
             traceback.print_exc()
-            return str(self.get_config_value('chat_bot', 'bot_error_message'))
-        return str(self.get_config_value('chat_bot', 'bot_cant_understand_message'))
+            return str(MainHelper().get_config_value('chat_bot', 'bot_error_message'))
+        return str(MainHelper().get_config_value('chat_bot', 'bot_cant_understand_message'))
 
     async def bot_check_user_message(self, message_text, from_id, dialog_entity_id, dialog_entity_type):
         bot_check_message = message_text.replace(',', ' ')
         bot_check_message = self.adapt_command(bot_check_message)
-        if self.is_active_for_user(dialog_entity_id, False) and bot_check_message.startswith(self.get_config_value('chat_bot', 'bot_ignore_prefix')):
+        if self.is_active_for_user(dialog_entity_id, False) and bot_check_message.startswith(MainHelper().get_config_value('chat_bot', 'bot_ignore_prefix')):
             return False
-        if self.is_active_for_user(dialog_entity_id, False) and bot_check_message.startswith(self.get_config_value('chat_bot', 'bot_end_prefix')):
-            bot_message = bot_check_message.replace(self.get_config_value('chat_bot', 'bot_end_prefix'), '', 1).strip()
+        if self.is_active_for_user(dialog_entity_id, False) and bot_check_message.startswith(MainHelper().get_config_value('chat_bot', 'bot_end_prefix')):
+            bot_message = bot_check_message.replace(MainHelper().get_config_value('chat_bot', 'bot_end_prefix'), '', 1).strip()
             if not bot_message:
-                bot_message = self.get_config_value('chat_bot', 'bot_empty_goodbuy')
+                bot_message = MainHelper().get_config_value('chat_bot', 'bot_empty_goodbuy')
             print('Bot command:')
             self.tg_client.sprint('<<< ' + bot_message.replace('\n', ' \\n '))
             await self.bot_command(bot_message, from_id, dialog_entity_id, dialog_entity_type)
             self.stop_chat_with_user(dialog_entity_id)
             return True
-        elif self.is_active_for_user(dialog_entity_id, False) or ((self.tg_client.selected_user_activity == dialog_entity_id) and (bot_check_message.startswith(self.get_config_value('chat_bot', 'bot_start_prefix')))):
+        elif self.is_active_for_user(dialog_entity_id, False) or ((self.tg_client.selected_user_activity == dialog_entity_id) and (bot_check_message.startswith(MainHelper().get_config_value('chat_bot', 'bot_start_prefix')))):
             if not self.is_active_for_user(dialog_entity_id, False):
-                bot_message = bot_check_message.replace(self.get_config_value('chat_bot', 'bot_start_prefix'), '', 1).strip()
+                bot_message = bot_check_message.replace(MainHelper().get_config_value('chat_bot', 'bot_start_prefix'), '', 1).strip()
             else:
                 bot_message = message_text.strip()
             if not bot_message:
-                bot_message = self.get_config_value('chat_bot', 'bot_empty_greet')
+                bot_message = MainHelper().get_config_value('chat_bot', 'bot_empty_greet')
             print('Bot command:')
             self.tg_client.sprint('<<< ' + message_text.replace('\n', ' \\n '))
             await self.bot_command(bot_message, from_id, dialog_entity_id, dialog_entity_type)

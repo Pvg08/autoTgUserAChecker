@@ -7,6 +7,7 @@ from telethon.tl.types import User, PeerUser
 from telethon.tl.types.messages import DialogsSlice
 
 from bot_action_branch import BotActionBranch
+from helper_functions import MainHelper
 from status_controller import StatusController
 
 
@@ -224,7 +225,7 @@ class AutoAnswers(BotActionBranch):
         elif self.setup_step == 200:
             msg = '**Настройка даты/времени прибытия**\n\n'
             msg = msg + 'оно будет указано ботом в начальном сообщении вида:\n'
-            msg = msg + '```'+self.get_config_value('chat_bot', 'bot_aa_default_message_time')+'```\n'
+            msg = msg + '```'+MainHelper().get_config_value('chat_bot', 'bot_aa_default_message_time')+'```\n'
             msg = msg + 'Введите дату/время'
             await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
 
@@ -293,15 +294,15 @@ class AutoAnswers(BotActionBranch):
             await self.next_setup_step()
         elif self.setup_step == 7:
             if not message or (message in self.no_variants):
-                message = str(self.get_config_value('chat_bot', 'bot_aa_default_message'))
+                message = str(MainHelper().get_config_value('chat_bot', 'bot_aa_default_message'))
             elif re.match(r"[0-9]{1,2}:[0-9]{1,2}", message):
                 d_msg = message
-                message = str(self.get_config_value('chat_bot', 'bot_aa_default_message_time'))
+                message = str(MainHelper().get_config_value('chat_bot', 'bot_aa_default_message_time'))
                 message = message.replace('[datetime]', d_msg)
             self.aa_options['message'] = message
             await self.next_setup_step()
         elif self.setup_step == 200:
-            self.aa_options['message'] = str(self.get_config_value('chat_bot', 'bot_aa_default_message_time'))
+            self.aa_options['message'] = str(MainHelper().get_config_value('chat_bot', 'bot_aa_default_message_time'))
             self.aa_options['message'] = self.aa_options['message'].replace('[datetime]', message)
             self.reset_user_setup()
             await self.send_message_to_user(from_id, 'Сообщение изменено!')
@@ -433,7 +434,7 @@ class AutoAnswers(BotActionBranch):
         if not self.aa_options['is_set']:
             self.tg_bot_controller.tg_client.me_last_activity = datetime.now()  + timedelta(minutes=-10)
             if not message:
-                message = str(self.get_config_value('chat_bot', 'bot_aa_default_message'))
+                message = str(MainHelper().get_config_value('chat_bot', 'bot_aa_default_message'))
             self.reset_aa()
             self.reset_user_setup()
             self.aa_options = {
