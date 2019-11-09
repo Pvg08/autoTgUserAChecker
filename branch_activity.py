@@ -19,6 +19,7 @@ class ActivityBranch(BotActionBranch):
         self.commands.update({
             '/activity_today': {
                 'cmd': self.cmd_activity_today,
+                'cmd_params_reader': self.read_username_str,
                 'bot_button': {
                     'title': 'сессии за сегодня',
                     'position': [0, 0],
@@ -29,6 +30,7 @@ class ActivityBranch(BotActionBranch):
             },
             '/plot_today': {
                 'cmd': self.cmd_plot_today,
+                'cmd_params_reader': self.read_username_str,
                 'bot_button': {
                     'title': 'график (сегодня)',
                     'position': [1, 0],
@@ -39,6 +41,7 @@ class ActivityBranch(BotActionBranch):
             },
             '/plot_week': {
                 'cmd': self.cmd_plot_week,
+                'cmd_params_reader': self.read_username_str,
                 'bot_button': {
                     'title': 'график (неделя)',
                     'position': [1, 1],
@@ -49,6 +52,7 @@ class ActivityBranch(BotActionBranch):
             },
             '/plot_all': {
                 'cmd': self.cmd_plot_all,
+                'cmd_params_reader': self.read_username_str,
                 'bot_button': {
                     'title': 'график (всё)',
                     'position': [1, 2],
@@ -59,6 +63,7 @@ class ActivityBranch(BotActionBranch):
             },
             '/plot_hours': {
                 'cmd': self.cmd_plot_hours,
+                'cmd_params_reader': self.read_username_str,
                 'bot_button': {
                     'title': 'по часам (всё)',
                     'position': [2, 0],
@@ -69,6 +74,7 @@ class ActivityBranch(BotActionBranch):
             },
             '/plot_hours_weekday': {
                 'cmd': self.cmd_plot_hours_weekday,
+                'cmd_params_reader': self.read_username_str,
                 'bot_button': {
                     'title': 'по часам (будние)',
                     'position': [2, 1],
@@ -79,6 +85,7 @@ class ActivityBranch(BotActionBranch):
             },
             '/plot_hours_weekend': {
                 'cmd': self.cmd_plot_hours_weekend,
+                'cmd_params_reader': self.read_username_str,
                 'bot_button': {
                     'title': 'по часам (выходные)',
                     'position': [2, 2],
@@ -89,6 +96,7 @@ class ActivityBranch(BotActionBranch):
             },
             '/user_info': {
                 'cmd': self.cmd_user_info,
+                'cmd_params_reader': self.read_username_str,
                 'bot_button': {
                     'title': 'общая информация',
                     'position': [3, 0],

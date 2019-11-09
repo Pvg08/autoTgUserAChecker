@@ -83,14 +83,14 @@ class DialogueBranch(BotActionBranch):
     async def pick_user_if_need(self, from_id, params, cmd):
         if (from_id == self.tg_bot_controller.tg_client.me_user_id) and ((params is None) or is_list_like(params)):
             self.me_picker_cmd = cmd
-            await self.read_bot_str(from_id, self.on_pick_username, 'Введите логин/ID пользователя Telegram:')
+            await self.read_username_str(from_id, self.on_pick_username, allow_pick_myself=False)
             return True
         return False
 
-    async def on_pick_username(self, message, from_id, params):
+    async def on_pick_username(self, from_id, params):
         if not self.me_picker_cmd:
             return
-        for_id = await self.tg_bot_controller.get_from_id_param(from_id, [message])
+        for_id = await self.tg_bot_controller.get_from_id_param(from_id, params)
         if for_id == self.tg_bot_controller.tg_client.me_user_id:
             self.me_picker_cmd = None
             await self.send_message_to_user(from_id, 'Недопустимый выбор!')

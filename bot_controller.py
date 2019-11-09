@@ -403,16 +403,3 @@ class BotController(BotActionBranch):
     async def cmd_exit(self, from_id, params):
         await self.send_message_to_user(from_id, 'Диалог прерван')
         self.stop_chat_with_user(from_id)
-
-    async def get_from_id_param(self, from_id, params):
-        if params and (len(params) > 0) and params[0]:
-            try:
-                entity = await self.tg_client.get_entity(str(params[0]).strip())
-            except ValueError:
-                try:
-                    entity = await self.tg_client.get_entity(PeerUser(int(params[0])))
-                except:
-                    entity = None
-            if type(entity) == User:
-                from_id = entity.id
-        return from_id

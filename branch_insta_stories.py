@@ -90,11 +90,7 @@ class InstaStoriesBranch(BotActionBranch):
             traceback.print_exc()
             return
 
-        story_records = self.tg_bot_controller.tg_client.entity_controller.get_entity_db_option(0, 'insta_story_entries')
-        if story_records:
-            story_records = json.loads(story_records)
-        else:
-            story_records = {}
+        story_records = self.tg_bot_controller.tg_client.entity_controller.get_entity_db_option(0, 'insta_story_entries', True, {})
 
         for st_id in list(story_records.keys()):
             try:
@@ -206,8 +202,7 @@ class InstaStoriesBranch(BotActionBranch):
         if (not response['items']) or (len(response['items']) == 0):
             print(username + ": Stories was not found.")
 
-        story_records = json.dumps(story_records)
-        self.tg_bot_controller.tg_client.entity_controller.set_entity_db_option(0, 'insta_story_entries', story_records)
+        self.tg_bot_controller.tg_client.entity_controller.set_entity_db_option(0, 'insta_story_entries', story_records, True)
 
     @staticmethod
     def get_story_file_name(taken_at, location):
@@ -241,11 +236,7 @@ class InstaStoriesBranch(BotActionBranch):
             print('!!! Error: Cant open session')
             traceback.print_exc()
 
-        story_records = self.tg_bot_controller.tg_client.entity_controller.get_entity_db_option(0, 'insta_story_entries')
-        if story_records:
-            story_records = json.loads(story_records)
-        else:
-            story_records = {}
+        story_records = self.tg_bot_controller.tg_client.entity_controller.get_entity_db_option(0, 'insta_story_entries', True, {})
 
         for row in story_records.values():
             if row['filename'] and len(row['filename']) > 0:
@@ -283,8 +274,7 @@ class InstaStoriesBranch(BotActionBranch):
             if item[0] in story_records:
                 story_records[item[0]]['filename'] = item[1]
 
-        story_records = json.dumps(story_records)
-        self.tg_bot_controller.tg_client.entity_controller.set_entity_db_option(0, 'insta_story_entries', story_records)
+        self.tg_bot_controller.tg_client.entity_controller.set_entity_db_option(0, 'insta_story_entries', story_records, True)
 
     async def on_timer(self):
         if not self.branch_parent.has_insta_lib:
@@ -304,14 +294,8 @@ class InstaStoriesBranch(BotActionBranch):
             print('API-клиент не был инициализирован!')
             return
 
-        insta_id_cache = self.tg_bot_controller.tg_client.entity_controller.get_entity_db_option(0, 'insta_user_ids')
-        if insta_id_cache:
-            insta_id_cache = json.loads(insta_id_cache)
-        else:
-            insta_id_cache = {}
+        insta_id_cache = self.tg_bot_controller.tg_client.entity_controller.get_entity_db_option(0, 'insta_user_ids', True, {})
 
-        if not insta_id_cache:
-            insta_id_cache = {}
         for username in ustories:
             if username in insta_id_cache:
                 user_id = insta_id_cache[username]
@@ -324,8 +308,7 @@ class InstaStoriesBranch(BotActionBranch):
             self.save_user_stories(user_id, username)
         self.download_stories()
 
-        insta_id_cache = json.dumps(insta_id_cache)
-        self.tg_bot_controller.tg_client.entity_controller.set_entity_db_option(0, 'insta_user_ids', insta_id_cache)
+        self.tg_bot_controller.tg_client.entity_controller.set_entity_db_option(0, 'insta_user_ids', insta_id_cache, True)
 
     async def cmd_set_stories_users(self, from_id, params):
         text = ''
@@ -341,11 +324,7 @@ class InstaStoriesBranch(BotActionBranch):
         await self.send_message_to_user(from_id, 'Сброс аккаунтов для получения историй выполнен!')
 
     async def cmd_show_stories_log(self, from_id, params):
-        story_records = self.tg_bot_controller.tg_client.entity_controller.get_entity_db_option(0, 'insta_story_entries')
-        if story_records:
-            story_records = json.loads(story_records)
-        else:
-            story_records = {}
+        story_records = self.tg_bot_controller.tg_client.entity_controller.get_entity_db_option(0, 'insta_story_entries', True, {})
         story_records = list(filter(lambda xs: xs[1]['filename'] != '', sorted(story_records.items(), key=lambda x: x[1]['taken_at'], reverse=True)))
         if not story_records or len(story_records) == 0:
             await self.send_message_to_user(from_id, 'Истории ещё не скачивались!')
@@ -357,8 +336,8 @@ class InstaStoriesBranch(BotActionBranch):
         results = "\n\n".join(results) + '```'
         await self.send_message_to_user(from_id, results)
 
-    async def on_set_user_stories(self, message, from_id, params):
-        message = str(message).strip().lower()
+    async def on_set_user_stories(self, from_id, params):
+        message = str(params[0]).strip().lower()
         if message in self.no_variants:
             self.tg_bot_controller.tg_client.entity_controller.set_entity_db_option(from_id, 'stories_accounts', None)
         else:

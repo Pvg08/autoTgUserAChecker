@@ -359,15 +359,15 @@ class InstaBranch(BotActionBranch):
     async def cmd_check_followings(self, from_id, params):
         await self.read_or_run_default(from_id, self.on_check_read_username, self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name, 'Введите имя пользователя Instagram:', "back")
 
-    async def on_check_set_username(self, message, from_id, params):
-        info = await self.get_user_info_by_username(from_id, message)
+    async def on_check_set_username(self, from_id, params):
+        info = await self.get_user_info_by_username(from_id, params[0])
         if info:
             self.tg_bot_controller.tg_client.entity_controller.save_user_instagram_name(from_id, info['user']['username'])
             await self.send_message_to_user(from_id, 'Установка имени инстаграм-аккаунта выполнена!')
 
-    async def on_info_read_username(self, message, from_id, params):
+    async def on_info_read_username(self, from_id, params):
         await self.send_typing_to_user(from_id, True)
-        info = await self.get_user_info_by_username(from_id, message)
+        info = await self.get_user_info_by_username(from_id, params[0])
         if not info:
             await self.send_typing_to_user(from_id, False)
             return
@@ -399,9 +399,9 @@ class InstaBranch(BotActionBranch):
 
         await self.send_message_to_user(from_id, results, link_preview=True)
 
-    async def on_check_read_username(self, message, from_id, params):
+    async def on_check_read_username(self, from_id, params):
         await self.send_typing_to_user(from_id, True)
-        info = await self.get_user_info_by_username(from_id, message)
+        info = await self.get_user_info_by_username(from_id, params[1])
         if not info:
             await self.send_typing_to_user(from_id, False)
             return
@@ -434,7 +434,7 @@ class InstaBranch(BotActionBranch):
             followers_not_following = list(map(lambda x: followers_names[str(x)], filter(lambda x: x not in following_ids, followers_ids)))
             following_not_followers = list(map(lambda x: following_names[str(x)], filter(lambda x: x not in followers_ids, following_ids)))
 
-            if params == "forward":
+            if params[0] == "forward":
                 if len(following_not_followers) == 0:
                     results.append('Все, на кого подписан ' + user_name + ', подписаны и на него')
                 else:
@@ -458,9 +458,9 @@ class InstaBranch(BotActionBranch):
 
         await self.send_message_to_user(from_id, results)
 
-    async def on_locations_read_username(self, message, from_id, params):
+    async def on_locations_read_username(self, from_id, params):
         await self.send_typing_to_user(from_id, True)
-        info = await self.get_user_info_by_username(from_id, message)
+        info = await self.get_user_info_by_username(from_id, params[0])
         if not info:
             await self.send_typing_to_user(from_id, False)
             return
@@ -501,9 +501,9 @@ class InstaBranch(BotActionBranch):
         results = "\n".join(results)
         await self.send_message_to_user(from_id, results)
 
-    async def on_active_commenters_read_username(self, message, from_id, params):
+    async def on_active_commenters_read_username(self, from_id, params):
         await self.send_typing_to_user(from_id, True)
-        info = await self.get_user_info_by_username(from_id, message)
+        info = await self.get_user_info_by_username(from_id, params[0])
         if not info:
             await self.send_typing_to_user(from_id, False)
             return
@@ -561,9 +561,9 @@ class InstaBranch(BotActionBranch):
         results = "\n".join(results)
         await self.send_message_to_user(from_id, results)
 
-    async def on_active_likers_read_username(self, message, from_id, params):
+    async def on_active_likers_read_username(self, from_id, params):
         await self.send_typing_to_user(from_id, True)
-        info = await self.get_user_info_by_username(from_id, message)
+        info = await self.get_user_info_by_username(from_id, params[0])
         if not info:
             await self.send_typing_to_user(from_id, False)
             return

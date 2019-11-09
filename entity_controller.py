@@ -1,3 +1,4 @@
+import json
 import traceback
 from datetime import datetime
 
@@ -71,6 +72,36 @@ class EntityController():
     def get_user_instagram_name(self, user_id):
         return self.get_entity_db_option(user_id, 'instagram_username')
 
+    async def get_username_variants(self, user_id, allow_pick_me=True):
+        self_name = await self.get_entity_name(user_id, 'User')
+        variants = self.get_entity_db_option(user_id, 'user_variants', True, {})
+        result_variants = {}
+        if allow_pick_me:
+            result_variants[user_id] = self_name + ' (Это Вы)'
+        for variant_id in variants.keys():
+            if variant_id not in result_variants:
+                try:
+                    n_name = await self.get_entity_name(int(variant_id), 'User')
+                except:
+                    n_name = None
+                if n_name:
+                    if int(variant_id) != user_id:
+                        result_variants[variant_id] = n_name
+        self.set_entity_db_option(user_id, 'user_variants', result_variants, True)
+        return result_variants
+
+    async def add_username_variant(self, user_id, variant_user_id):
+        variants = self.get_entity_db_option(user_id, 'user_variants', True, {})
+        if variant_user_id in variants:
+            return
+        try:
+            n_name = await self.get_entity_name(int(variant_user_id), 'User')
+        except:
+            n_name = None
+        if n_name:
+            variants[variant_user_id] = n_name
+            self.set_entity_db_option(user_id, 'user_variants', variants, True)
+
     def get_user_bot_last_version(self, user_id):
         return self.get_entity_db_option(user_id, 'bot_last_version')
 
@@ -102,7 +133,8 @@ class EntityController():
     def save_user_bot_chat(self, bot_chat: InputPeerUser):
         return self.set_entity_db_option(bot_chat.user_id, 'bot_hash', str(bot_chat.access_hash))
 
-    def get_entity_db_option(self, entity_id, option_name):
+    def get_entity_db_option(self, entity_id, option_name, is_json=False, default=None):
+        result = default
         try:
             row = self.db_conn.execute("""
                 SELECT `option_value` FROM `users_options` 
@@ -110,10 +142,12 @@ class EntityController():
                 LIMIT 1
             """, [str(entity_id), str(option_name)]).fetchone()
             if row and ('option_value' in row) and row['option_value']:
-                return row['option_value']
+                result = row['option_value']
+                if is_json:
+                    result = json.loads(result)
         except:
             traceback.print_exc()
-        return None
+        return result
 
     def get_entity_db_option_list(self, option_name, except_user_id=-1):
         result = []
@@ -129,8 +163,10 @@ class EntityController():
             traceback.print_exc()
         return result
 
-    def set_entity_db_option(self, entity_id, option_name, option_value):
+    def set_entity_db_option(self, entity_id, option_name, option_value, as_json=False):
         try:
+            if as_json:
+                option_value = json.dumps(option_value)
             if entity_id is None:
                 c = self.db_conn.cursor()
                 c.execute("""

@@ -6,7 +6,7 @@ from datetime import datetime
 from telethon.errors import MessageNotModifiedError
 from telethon.tl import functions
 from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction, KeyboardButtonCallback, Message, \
-    MessageService
+    MessageService, PeerUser, User
 
 
 class BotActionBranch:
@@ -60,6 +60,13 @@ class BotActionBranch:
                 'places': ['bot'],
                 'rights_level': 0,
                 'desc': 'подняться на уровень выше'
+            },
+            '/enter_str': {
+                'cmd': self.cmd_enter_str,
+                'display_condition': self.do_not_display,
+                'places': ['bot'],
+                'rights_level': 0,
+                'desc': None
             },
         }
         self.command_groups = {}
@@ -214,12 +221,75 @@ class BotActionBranch:
             'params': params
         }
 
+    async def read_username_str(self, from_id, callback, message=None, params=None, allow_pick_myself=True):
+        if not message:
+            message = 'Выберите вариант из списка:'
+        username_variants = await self.tg_bot_controller.tg_client.entity_controller.get_username_variants(from_id, allow_pick_myself)
+        buttons = [[KeyboardButtonCallback(str(variant[1]), str(variant[0]).encode())] for variant in username_variants.items()]
+        buttons.append([KeyboardButtonCallback('Ввести логин/ID', b"/enter_str")])
+        await self.send_message_to_user(from_id, message, buttons=buttons, do_set_next=False)
+        self.read_once_callbacks[from_id] = {
+            'enter_str_text': 'Введите логин/ID пользователя Telegram:',
+            'need_username_add': True,
+            'username_add_text': 'Выбран пользователь: **{}**',
+            'allow_pick_myself': allow_pick_myself,
+            'callback': callback,
+            'params': params
+        }
+
+    async def get_from_id_param(self, from_id, params):
+        if params and (len(params) > 0) and params[0]:
+            try:
+                entity = await self.tg_bot_controller.tg_client.get_entity(str(params[0]).strip())
+            except ValueError:
+                try:
+                    entity = await self.tg_bot_controller.tg_client.get_entity(PeerUser(int(params[0])))
+                except:
+                    entity = None
+            if type(entity) == User:
+                from_id = entity.id
+        return from_id
+
+    async def run_user_callback(self, message, from_id):
+        if message == '/enter_str':
+            await self.send_message_to_user(from_id, self.read_once_callbacks[from_id]['enter_str_text'], do_set_next=False)
+            return
+        if ('need_username_add' in self.read_once_callbacks[from_id]) and self.read_once_callbacks[from_id]['need_username_add']:
+            message_user_id = await self.get_from_id_param(None, [message])
+            if message_user_id:
+                if ('allow_pick_myself' not in self.read_once_callbacks[from_id]) or not self.read_once_callbacks[from_id]['allow_pick_myself']:
+                    if (int(message_user_id) == self.tg_bot_controller.tg_client.me_user_id) and (from_id == self.tg_bot_controller.tg_client.me_user_id):
+                        await self.send_message_to_user(from_id, 'Недопустимый выбор! Попробуй что-нибудь другое!', do_set_next=False)
+                        return
+                    if (int(message_user_id) == self.tg_bot_controller.tg_client.me_user_id) and (from_id != self.tg_bot_controller.tg_client.me_user_id):
+                        message_user_id = from_id
+                if ('username_add_text' in self.read_once_callbacks[from_id]) and self.read_once_callbacks[from_id]['username_add_text']:
+                    user_name = await self.tg_bot_controller.tg_client.get_entity_name(message_user_id, 'User')
+                    await self.send_message_to_user(from_id, self.read_once_callbacks[from_id]['username_add_text'].format(user_name), do_set_next=False)
+                await self.tg_bot_controller.tg_client.entity_controller.add_username_variant(from_id, message_user_id)
+        n_params = self.read_once_callbacks[from_id]['params']
+        if n_params is None:
+            n_params = [message]
+        elif type(n_params) == list:
+            n_params.append(message)
+        else:
+            n_params = [n_params, message]
+        await self.read_once_callbacks[from_id]['callback'](from_id, n_params)
+        self.read_once_callbacks[from_id] = None
+
     async def read_or_run_default(self, from_id, callback_cmd, callback_param, read_message, cmd_params=None):
-        # async def callback_cmd(message, from_id, params)
+        # async def callback_cmd(from_id, params)
         # def callback_param(user_id)
         u_param = callback_param(from_id)
         if u_param:
-            await callback_cmd(u_param, from_id, cmd_params)
+            n_params = cmd_params
+            if n_params is None:
+                n_params = [u_param]
+            elif type(n_params) == list:
+                n_params.append(u_param)
+            else:
+                n_params = [n_params, u_param]
+            await callback_cmd(from_id, n_params)
         else:
             await self.read_bot_str(from_id, callback_cmd, read_message, cmd_params)
 
@@ -238,8 +308,7 @@ class BotActionBranch:
         if not self.is_in_current_branch(from_id):
             return False
         if (from_id in self.read_once_callbacks) and self.read_once_callbacks[from_id]:
-            await self.read_once_callbacks[from_id]['callback'](message, from_id, self.read_once_callbacks[from_id]['params'])
-            self.read_once_callbacks[from_id] = None
+            await self.run_user_callback(message, from_id)
             return True
         message = message.lower()
         if await self.run_command_text(message, from_id):
@@ -265,9 +334,13 @@ class BotActionBranch:
                 try:
                     command_obj = command['cmd']
                     if isinstance(command_obj, BotActionBranch):
-                        await command_obj.run_main_setup(from_id, command_parts[1:])
+                        command_f = command_obj.run_main_setup
                     else:
-                        await command_obj(from_id, command_parts[1:])
+                        command_f = command_obj
+                    if ('cmd_params_reader' in command) and command['cmd_params_reader']:
+                        await command['cmd_params_reader'](from_id, command_f)
+                    else:
+                        await command_f(from_id, command_parts[1:])
                 except Exception as exception:
                     traceback.print_exc()
                     await self.send_message_to_user(from_id, self.default_error_text.replace('[error_name]', str(exception)).strip())
@@ -351,6 +424,8 @@ class BotActionBranch:
                 if (not buttons) and (not set_active) and do_set_next:
                     buttons = [KeyboardButtonCallback('Продолжить', '/help'.encode())]
                     set_next = True
+                elif buttons and (not set_active):
+                    set_next = True
                 message = await message_client.send_message(dialog_entity, message, link_preview=link_preview, buttons=buttons)
                 if message and (type(message) == Message):
                     self.tg_bot_controller.set_message_for_user(user_id, message.id, set_active, set_next)
@@ -415,4 +490,7 @@ class BotActionBranch:
         await self.return_to_main_branch(from_id)
 
     async def cmd_back(self, from_id, params):
+        await self.return_to_back_branch(from_id)
+
+    async def cmd_enter_str(self, from_id, params):
         await self.return_to_back_branch(from_id)

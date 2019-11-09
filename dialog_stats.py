@@ -702,10 +702,14 @@ class DialogStats:
                         results.append('Отредактировано сообщений {} после ответа на него: {}'.format(me_name, me_edit_stats['sequence_interrupted_cnt']))
                         results.append('Процент редактируемых сообщений {0}: {1:0.2f}%'.format(another_name, 100 * another_edit_stats['edited_messages_count'] / msg_another_cnt))
                         results.append('Процент редактируемых сообщений {0}: {1:0.2f}%'.format(me_name, 100 * me_edit_stats['edited_messages_count'] / msg_me_cnt))
-                        results.append('Макс. число правок одного сообщения {}: {} ("{}")'.format(another_name, another_edit_stats['max_1_message_edits'], self.cut_text(another_edit_stats['max_edits_message'])))
-                        results.append('Макс. число правок одного сообщения {}: {} ("{}")'.format(me_name, me_edit_stats['max_1_message_edits'], self.cut_text(me_edit_stats['max_edits_message'])))
-                        results.append('Макс. процент правок одного сообщения {0}: {1:0.2f}% ("{2}")'.format(another_name, another_edit_stats['max_1_message_diff_percent'], self.cut_text(another_edit_stats['max_changed_message'])))
-                        results.append('Макс. процент правок одного сообщения {0}: {1:0.2f}% ("{2}")'.format(me_name, me_edit_stats['max_1_message_diff_percent'], self.cut_text(me_edit_stats['max_changed_message'])))
+                        if another_edit_stats['max_1_message_edits'] > 0:
+                            results.append('Макс. число правок одного сообщения {}: {} ("{}")'.format(another_name, another_edit_stats['max_1_message_edits'], self.cut_text(another_edit_stats['max_edits_message'])))
+                        if me_edit_stats['max_1_message_edits'] > 0:
+                            results.append('Макс. число правок одного сообщения {}: {} ("{}")'.format(me_name, me_edit_stats['max_1_message_edits'], self.cut_text(me_edit_stats['max_edits_message'])))
+                        if another_edit_stats['max_1_message_diff_percent'] > 0:
+                            results.append('Макс. процент правок одного сообщения {0}: {1:0.2f}% ("{2}")'.format(another_name, another_edit_stats['max_1_message_diff_percent'], self.cut_text(another_edit_stats['max_changed_message'])))
+                        if me_edit_stats['max_1_message_diff_percent'] > 0:
+                            results.append('Макс. процент правок одного сообщения {0}: {1:0.2f}% ("{2}")'.format(me_name, me_edit_stats['max_1_message_diff_percent'], self.cut_text(me_edit_stats['max_changed_message'])))
                         results.append('')
                         results.append('В среднем правок на 1 сообщение {0}: {1:0.2f}'.format(another_name, another_edit_stats['mid_1_message_edits']))
                         results.append('В среднем правок на 1 сообщение {0}: {1:0.2f}'.format(me_name, me_edit_stats['mid_1_message_edits']))
