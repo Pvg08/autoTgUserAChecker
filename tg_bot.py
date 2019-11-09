@@ -119,8 +119,15 @@ class InteractiveTelegramBot(TelegramClient):
                     print(StatusController.datetime_to_str(datetime.now()) + ' Command to my bot from "' + msg_entity_name + '"')
                     print('<<< ' + str(data.message.message))
 
+            forward_data = None
+
             if data.message.id:
                 bot_chat = await event.get_input_chat()
+                if data.message.fwd_from:
+                    forward_data = {
+                        'from_id': data.message.fwd_from.from_id,
+                        'date_from': data.message.fwd_from.date
+                    }
             else:
                 try:
                     bot_chat = await self.get_input_entity(PeerUser(data.message.from_id))
@@ -142,7 +149,7 @@ class InteractiveTelegramBot(TelegramClient):
                 self.tg_client.entity_controller.save_user_bot_last_version(bot_chat.user_id, MainHelper().get_config_float_value('main', 'actual_version'))
             if data.message.id:
                 self.tg_client.bot_controller.set_message_for_user(data.message.from_id, data.message.id, False)
-            await self.tg_client.bot_controller.bot_command(data.message.message, data.message.from_id, self.bot_entity_id, 'Bot')
+            await self.tg_client.bot_controller.bot_command(data.message.message, data.message.from_id, self.bot_entity_id, 'Bot', forward_data)
         except:
             traceback.print_exc()
 

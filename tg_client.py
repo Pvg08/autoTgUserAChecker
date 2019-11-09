@@ -5,11 +5,9 @@ import traceback
 from collections import Counter
 
 import socks
-import configparser
 from datetime import datetime
 from getpass import getpass
 
-from playsound import playsound
 from telethon.errors import SessionPasswordNeededError
 from telethon.network import ConnectionTcpMTProxyRandomizedIntermediate, ConnectionTcpAbridged
 from telethon import TelegramClient, events
@@ -298,6 +296,9 @@ class InteractiveTelegramClient(TelegramClient):
             message_text = ''
         message_parts = []
 
+        if ('fwd_from' in data_message) and data_message['fwd_from']:
+            message_text = '[forward]'
+            message_text = ''
         if ('reply_markup' in data_message) and data_message['reply_markup']:
             message_parts.append('[reply_markup]')
         if ('media' in data_message) and data_message['media']:

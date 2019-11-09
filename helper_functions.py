@@ -56,14 +56,17 @@ class MainHelper(metaclass=MetaSingleton):
         return self.get_config_int_value('events', event_name) == 1
 
     def play_sound(self, file_name):
-        playsound(file_name, False)
+        try:
+            playsound(file_name, False)
+        except:
+            pass
 
     def play_notify_sound(self, notify_name, is_selected=False):
         notify_section = 'notify_selected' if is_selected else 'notify_all'
         if self.get_config_int_value(notify_section, notify_name) == 1:
             notify_sound = self.get_config_value('notify_sounds', notify_name + '_sound')
             if notify_sound:
-                playsound(self.root_path + notify_sound, False)
+                self.play_sound(self.root_path + notify_sound)
                 return True
         return False
 
@@ -93,7 +96,7 @@ class CacheHelper(metaclass=MetaSingleton):
         try:
             file_age = self.file_age_in_seconds(file_name)
             print('Age of cache file ' + file_name + ' is ' + str(file_age))
-            if file_age <= max_age_seconds:
+            if (max_age_seconds is False) or (file_age <= max_age_seconds):
                 with open(file_name) as json_data:
                     return json.load(json_data)
         except OSError:

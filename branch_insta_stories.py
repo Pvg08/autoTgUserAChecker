@@ -1,12 +1,10 @@
 import json
 import traceback
 import re
+import os
 from datetime import datetime
 
-import os
-
 import requests
-from playsound import playsound
 
 from bot_action_branch import BotActionBranch
 from helper_functions import MainHelper

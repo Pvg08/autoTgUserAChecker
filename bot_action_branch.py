@@ -5,7 +5,8 @@ from datetime import datetime
 
 from telethon.errors import MessageNotModifiedError
 from telethon.tl import functions
-from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction, KeyboardButtonCallback, Message
+from telethon.tl.types import SendMessageTypingAction, SendMessageCancelAction, KeyboardButtonCallback, Message, \
+    MessageService
 
 
 class BotActionBranch:
@@ -287,7 +288,7 @@ class BotActionBranch:
         message = await message_client.get_messages(dialog_entity, ids=message_id)
         if not message:
             return
-        if type(message) != Message:
+        if (type(message) != Message) and (type(message) != MessageService):
             if len(message) == 0:
                 return
             message = message[0]

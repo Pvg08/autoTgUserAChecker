@@ -12,6 +12,7 @@ from branch_activity import ActivityBranch
 from branch_dialogue import DialogueBranch
 from branch_insta import InstaBranch
 from branch_tools import ToolsBranch
+from dialog_stats import DialogStats
 from helper_functions import MainHelper
 from status_controller import StatusController
 
@@ -355,12 +356,19 @@ class BotController(BotActionBranch):
     # ME -> USER     me_id      user_id           User
     # USER -> BOT    user_id    bot_id            Bot
     # ME -> BOT      me_id      bot_id            Bot
-    async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type):
+    async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type, fwd_from=None):
 
-        user_branch = self.get_user_branch(from_id)
-        if user_branch:
-            if await user_branch.on_bot_message(command_text, from_id):
-                return
+        fwd_message = None
+
+        if fwd_from and (from_entity_type == 'Bot'):
+            fwd_message = self.commands['/user_dialogue_info']['cmd'].dialog_stats.find_message_by_id_date(fwd_from['from_id'], fwd_from['date_from'])
+            command_text = '[пересланное сообщение]'
+
+        if not fwd_message:
+            user_branch = self.get_user_branch(from_id)
+            if user_branch:
+                if await user_branch.on_bot_message(command_text, from_id):
+                    return
 
         if from_entity_type not in ['User', 'Bot']:
             self.stop_chat_with_user(from_entity_id)
@@ -377,6 +385,11 @@ class BotController(BotActionBranch):
             await self.init_chat_for_user(from_id, from_entity_id)
             if (from_entity_id != from_id) and not self.is_active_for_user(from_entity_id, False):
                 await self.init_chat_for_user(from_entity_id)
+
+        if fwd_message:
+            self.set_branch_for_user(from_id, self.commands['/user_dialogue_info']['cmd'])
+            await self.commands['/user_dialogue_info']['cmd'].show_message_edits(from_id, fwd_message['entity_id'], fwd_message['message_id'])
+            return
 
         if await self.run_command_text(command_text, from_id):
             return
