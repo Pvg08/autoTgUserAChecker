@@ -301,7 +301,7 @@ class InstaBranch(BotActionBranch):
         CacheHelper().save_to_cache('get_all_feed', [api_user_id, max_count], feed_items)
         return feed_items
 
-    async def get_user_info_by_username(self, from_id, username):
+    async def get_user_info_by_username(self, from_id, username, max_age_seconds=86400):
         self.do_login_if_need()
         if not self.api:
             if from_id:
@@ -310,7 +310,7 @@ class InstaBranch(BotActionBranch):
                 print("Can't initialize instagram client!")
             return
         username = str(username).lower().strip()
-        cached_data = CacheHelper().get_from_cache('get_user_info_by_username', username)
+        cached_data = CacheHelper().get_from_cache('get_user_info_by_username', username, max_age_seconds)
         if cached_data is not None:
             return cached_data
         try:
@@ -360,14 +360,14 @@ class InstaBranch(BotActionBranch):
         await self.read_or_run_default(from_id, self.on_check_read_username, self.tg_bot_controller.tg_client.entity_controller.get_user_instagram_name, 'Введите имя пользователя Instagram:', "back")
 
     async def on_check_set_username(self, from_id, params):
-        info = await self.get_user_info_by_username(from_id, params[0])
+        info = await self.get_user_info_by_username(from_id, params[0], 10)
         if info:
             self.tg_bot_controller.tg_client.entity_controller.save_user_instagram_name(from_id, info['user']['username'])
             await self.send_message_to_user(from_id, 'Установка имени инстаграм-аккаунта выполнена!')
 
     async def on_info_read_username(self, from_id, params):
         await self.send_typing_to_user(from_id, True)
-        info = await self.get_user_info_by_username(from_id, params[0])
+        info = await self.get_user_info_by_username(from_id, params[0], 1800)
         if not info:
             await self.send_typing_to_user(from_id, False)
             return
@@ -460,7 +460,7 @@ class InstaBranch(BotActionBranch):
 
     async def on_locations_read_username(self, from_id, params):
         await self.send_typing_to_user(from_id, True)
-        info = await self.get_user_info_by_username(from_id, params[0])
+        info = await self.get_user_info_by_username(from_id, params[0], False)
         if not info:
             await self.send_typing_to_user(from_id, False)
             return
@@ -503,7 +503,7 @@ class InstaBranch(BotActionBranch):
 
     async def on_active_commenters_read_username(self, from_id, params):
         await self.send_typing_to_user(from_id, True)
-        info = await self.get_user_info_by_username(from_id, params[0])
+        info = await self.get_user_info_by_username(from_id, params[0], False)
         if not info:
             await self.send_typing_to_user(from_id, False)
             return
@@ -563,7 +563,7 @@ class InstaBranch(BotActionBranch):
 
     async def on_active_likers_read_username(self, from_id, params):
         await self.send_typing_to_user(from_id, True)
-        info = await self.get_user_info_by_username(from_id, params[0])
+        info = await self.get_user_info_by_username(from_id, params[0], False)
         if not info:
             await self.send_typing_to_user(from_id, False)
             return

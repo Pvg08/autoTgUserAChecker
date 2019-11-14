@@ -224,7 +224,7 @@ class BotActionBranch:
     async def read_username_str(self, from_id, callback, message=None, params=None, allow_pick_myself=True):
         if not message:
             message = 'Выберите вариант из списка:'
-        username_variants = await self.tg_bot_controller.tg_client.entity_controller.get_username_variants(from_id, allow_pick_myself)
+        username_variants = await self.tg_bot_controller.entity_controller.get_username_variants(from_id, allow_pick_myself)
         buttons = [[KeyboardButtonCallback(str(variant[1]), str(variant[0]).encode())] for variant in username_variants.items()]
         buttons.append([KeyboardButtonCallback('Ввести логин/ID', b"/enter_str")])
         await self.send_message_to_user(from_id, message, buttons=buttons, do_set_next=False)
@@ -266,7 +266,7 @@ class BotActionBranch:
                 if ('username_add_text' in self.read_once_callbacks[from_id]) and self.read_once_callbacks[from_id]['username_add_text']:
                     user_name = await self.tg_bot_controller.tg_client.get_entity_name(message_user_id, 'User')
                     await self.send_message_to_user(from_id, self.read_once_callbacks[from_id]['username_add_text'].format(user_name), do_set_next=False)
-                await self.tg_bot_controller.tg_client.entity_controller.add_username_variant(from_id, message_user_id)
+                await self.tg_bot_controller.entity_controller.add_username_variant(from_id, message_user_id)
         n_params = self.read_once_callbacks[from_id]['params']
         if n_params is None:
             n_params = [message]

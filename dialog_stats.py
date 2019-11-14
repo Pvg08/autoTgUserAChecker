@@ -250,7 +250,7 @@ class DialogStats:
                         (SELECT removed FROM `messages` m1 WHERE m1.`entity_id` = m.`entity_id` AND m1.message_id = m.message_id AND m1.from_id = m.from_id ORDER BY version DESC LIMIT 1) as 'is_removed'
                         FROM `messages` m
                         WHERE m.`entity_id` = ? OR m.`entity_id` = ?
-                        ORDER BY m.`taken_at` ASC
+                        ORDER BY m.`taken_at` ASC, m.`message_id` ASC, m.`version` ASC
                     """,
                     [str(user_id), str(self.tg_client.me_user_id)]
                 )
@@ -263,7 +263,7 @@ class DialogStats:
                         (SELECT removed FROM `messages` m1 WHERE m1.`entity_id` = m.`entity_id` AND m1.message_id = m.message_id AND m1.from_id = m.from_id ORDER BY version DESC LIMIT 1) as 'is_removed'
                         FROM `messages` m
                         WHERE (m.`entity_id` = ? OR m.`entity_id` = ?) AND (m.`taken_at` > ?)
-                        ORDER BY m.`taken_at` ASC
+                        ORDER BY m.`taken_at` ASC, m.`message_id` ASC, m.`version` ASC
                     """,
                     [str(user_id), str(self.tg_client.me_user_id), date_from]
                 )

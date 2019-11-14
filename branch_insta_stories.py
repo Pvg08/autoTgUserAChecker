@@ -300,7 +300,7 @@ class InstaStoriesBranch(BotActionBranch):
             if username in insta_id_cache:
                 user_id = insta_id_cache[username]
             else:
-                info = await self.branch_parent.get_user_info_by_username(None, username)
+                info = await self.branch_parent.get_user_info_by_username(None, username, False)
                 if not info:
                     continue
                 user_id = int(info['user']['pk'])

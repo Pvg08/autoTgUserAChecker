@@ -26,7 +26,6 @@ class StatusController:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS "activity" (
                 "user_id" INTEGER NOT NULL,
-                "login" TEXT,
                 "taken_at" DATETIME NOT NULL,
                 "expires" DATETIME NULL,
                 "signal_type" TEXT
@@ -565,13 +564,13 @@ class StatusController:
                 if row:
                     if (row['signal_type'] == "online") and (row['expires'] is not None) and (
                             row['expires'] < date_activity):
-                        c.execute('INSERT INTO `activity` VALUES(?,?,?,?,?)',
-                                  (str(user_id), str(login), row['expires'], None, 'offline'))
+                        c.execute('INSERT INTO `activity` VALUES(?,?,?,?)',
+                                  (str(user_id), row['expires'], None, 'offline'))
                         c.execute(
                             'UPDATE `activity` SET `expires` = NULL WHERE user_id = ? AND `signal_type` == "online" AND `expires` == ?',
                             (str(user_id), row['expires']))
-            c.execute('INSERT INTO `activity` VALUES(?,?,?,?,?)',
-                      (str(user_id), str(login), date_activity, date_expires, status_type))
+            c.execute('INSERT INTO `activity` VALUES(?,?,?,?)',
+                      (str(user_id), date_activity, date_expires, status_type))
             if not is_begin:
                 c.execute(
                     'UPDATE `activity` SET `expires` = NULL WHERE user_id = ? AND `signal_type` == "online" AND `expires` > ?',

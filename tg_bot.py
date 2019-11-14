@@ -99,9 +99,7 @@ class InteractiveTelegramBot(TelegramClient):
         if type(event.original_update) != UpdateNewMessage:
             return
         try:
-            if not self.bot_entity:
-                self.bot_entity = await self.get_entity(MainHelper().get_config_value('tg_bot', 'bot_username'))
-                self.bot_entity_id = self.bot_entity.id
+            await self.init_bot_entity()
             data = event.original_update
             if data.message.from_id == self.bot_entity_id:
                 return
@@ -113,7 +111,12 @@ class InteractiveTelegramBot(TelegramClient):
                     print('<<< ' + str(data.message.message))
                     t_date = StatusController.tg_datetime_to_local_datetime(data.message.date)
                     self.tg_client.add_message_to_db(self.bot_entity_id, 'Bot', data.message.from_id, self.bot_entity_id, data.message.id, data.message.message, t_date, 0)
+            elif data.message.id and data.message.from_id and (data.message.from_id == self.tg_client.me_user_id):
+                t_date = StatusController.tg_datetime_to_local_datetime(data.message.date)
+                self.tg_client.add_message_to_db(self.bot_entity_id, 'Bot', data.message.from_id, self.bot_entity_id, data.message.id, data.message.message, t_date, 0)
             elif not data.message.id and data.message.from_id:
+                t_date = StatusController.now_local_datetime()
+                self.tg_client.add_message_to_db(self.bot_entity_id, 'Bot', data.message.from_id, self.bot_entity_id, None, data.message.message, t_date, 0)
                 msg_entity_name = await self.tg_client.get_entity_name(data.message.from_id, 'User')
                 if msg_entity_name:
                     print(StatusController.datetime_to_str(datetime.now()) + ' Command to my bot from "' + msg_entity_name + '"')
@@ -153,8 +156,15 @@ class InteractiveTelegramBot(TelegramClient):
         except:
             traceback.print_exc()
 
+    async def init_bot_entity(self):
+        if not self.bot_entity:
+            self.bot_entity = await self.get_entity(MainHelper().get_config_value('tg_bot', 'bot_username'))
+            self.bot_entity_id = self.bot_entity.id
+            print('Bot entity ID: {}'.format(self.bot_entity_id))
+
     def do_start(self):
         print('Starting of bot')
         self.start(bot_token=MainHelper().get_config_value('tg_bot', 'token'))
+        self.loop.run_until_complete(self.init_bot_entity())
         self.add_event_handler(self.message_handler, event=events.NewMessage)
         self.add_event_handler(self.callback_handler, event=events.CallbackQuery)

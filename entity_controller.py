@@ -73,11 +73,14 @@ class EntityController():
         return self.get_entity_db_option(user_id, 'instagram_username')
 
     async def get_username_variants(self, user_id, allow_pick_me=True):
-        self_name = await self.get_entity_name(user_id, 'User')
         variants = self.get_entity_db_option(user_id, 'user_variants', True, {})
+        user_is_me = self.tg_client.me_user_id == user_id
         result_variants = {}
-        if allow_pick_me:
+        if (allow_pick_me and user_is_me) or (not user_is_me):
+            self_name = await self.get_entity_name(user_id, 'User')
             result_variants[user_id] = self_name + ' (Это Вы)'
+        if allow_pick_me or (not user_is_me):
+            variants[self.tg_client.me_user_id] = str(self.tg_client.me_user_name)
         for variant_id in variants.keys():
             if variant_id not in result_variants:
                 try:

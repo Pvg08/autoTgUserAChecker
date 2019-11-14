@@ -22,6 +22,7 @@ class BotController(BotActionBranch):
     def __init__(self, tg_client):
         super().__init__(self, None, None)
         self.tg_client = tg_client
+        self.entity_controller = tg_client.entity_controller
         self.bot_answer_format_text = str(MainHelper().get_config_value('chat_bot', 'bot_answer_format'))
         self.users = {}
         self.right_levels = {
@@ -191,7 +192,7 @@ class BotController(BotActionBranch):
             entity_id = user_id
 
         if in_bot and self.tg_client.tg_bot:
-            bot_chat_dialog = self.tg_client.entity_controller.get_user_bot_chat(user_id)
+            bot_chat_dialog = self.entity_controller.get_user_bot_chat(user_id)
             if not bot_chat_dialog and self.tg_client.tg_bot:
                 bot_chat_dialog = await self.tg_client.tg_bot.get_input_entity(PeerUser(user_id))
             is_bot_dialog = True

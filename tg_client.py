@@ -172,9 +172,10 @@ class InteractiveTelegramClient(TelegramClient):
                 "entity_type" TEXT NULL,
                 "from_id" INTEGER NULL,
                 "to_id" INTEGER NULL,
-                "message_id" INTEGER NOT NULL,
+                "message_id" INTEGER NULL,
                 "message" TEXT NULL,
                 "taken_at" DATETIME NOT NULL,
+                "read_at" DATETIME NOT NULL,
                 "version" INTEGER NOT NULL,
                 "removed_at" DATETIME NULL,
                 "removed" INTEGER NOT NULL
@@ -244,12 +245,13 @@ class InteractiveTelegramClient(TelegramClient):
                 ORDER BY `taken_at` DESC, `version` DESC LIMIT 1
             """, [str(message_id), str(entity_id)]).fetchone()
         if row:
+            now_time = self.status_controller.now_local_datetime()
             c = self.db_conn.cursor()
             c.execute("""
-                UPDATE `messages` SET `removed` = ?, `removed_at` = DATETIME('now', 'localtime') 
+                UPDATE `messages` SET `removed` = ?, `removed_at` = ?
                 WHERE `entity_id` = ? AND `message_id` = ? AND `version` = ?
             """, [
-                '1', str(row['entity_id']), str(row['message_id']), str(row['version'])
+                '1', now_time, str(row['entity_id']), str(row['message_id']), str(row['version'])
             ])
             c.execute("""
                 UPDATE `messages` SET `removed` = ?
@@ -261,24 +263,66 @@ class InteractiveTelegramClient(TelegramClient):
             return row
         return None
 
-    def add_message_to_db(self, entity_id, entity_type, from_id, to_id, message_id, message, taken_at, removed=0):
-        row = self.db_conn.execute("""
-            SELECT * FROM `messages` WHERE `entity_id` = ? AND `message_id` = ? ORDER BY `version` DESC LIMIT 1
-        """, [str(entity_id), str(message_id)]).fetchone()
-        if row:
-            if message == row['message']:
-                return None
-            version = int(row['version']) + 1
+    def add_message_to_db(self, entity_id, entity_type, from_id, to_id, message_id, message, taken_at, removed=0, read_at=None):
+        if entity_type in ['Bot', 'Channel']:
+            read_at = taken_at
+
+        if message_id is not None:
+            row = self.db_conn.execute("""
+                SELECT * FROM `messages` WHERE `entity_id` = ? AND `message_id` = ? ORDER BY `version` DESC LIMIT 1
+            """, [str(entity_id), str(message_id)]).fetchone()
+            if row:
+                if message == row['message']:
+                    return None
+                version = int(row['version']) + 1
+                read_at = row['read_at']
+            else:
+                version = 1
         else:
             version = 1
 
         c = self.db_conn.cursor()
-        c.execute('INSERT INTO `messages` VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+        c.execute('INSERT INTO `messages` VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
             str(entity_id), str(entity_type), str(from_id), str(to_id),
-            str(message_id), message, taken_at, str(version), None, str(removed)
+            message_id, message, taken_at, read_at, str(version), None, str(removed)
         ])
         self.db_conn.commit()
         return version
+
+    async def mark_message_as_read(self, entity, message_id, is_inbox):
+        entity_id, e_name = await self.entity_controller.get_entity_id_name_by_entity(entity)
+        to_id = entity_id
+        if is_inbox:
+            to_id = self.me_user_id
+        min_message_id = message_id - 1
+        row = self.db_conn.execute("""
+            SELECT MAX(message_id) as 'nn_id' FROM `messages` 
+            WHERE `entity_id` = ? AND `message_id` < ? AND `read_at` IS NOT NULL AND `to_id` = ?
+            LIMIT 1
+        """, [str(entity_id), str(message_id), str(to_id)]).fetchone()
+        if row and row['nn_id']:
+            min_message_id = int(row['nn_id'])
+        else:
+            row = self.db_conn.execute("""
+                SELECT MIN(m.message_id) as 'nn_id' FROM `messages` m
+                WHERE m.`entity_id` = ? AND m.`message_id` < ? AND m.`to_id` = ? 
+                      AND m.`message_id` > (
+                          SELECT MIN(message_id) FROM `messages` 
+                          WHERE `read_at` IS NOT NULL AND `entity_id` = m.`entity_id`
+                      ) AND `read_at` IS NULL
+                LIMIT 1
+            """, [str(entity_id), str(message_id), str(to_id)]).fetchone()
+            if row and row['nn_id']:
+                min_message_id = int(row['nn_id']) - 1
+        c = self.db_conn.cursor()
+        now_time = self.status_controller.now_local_datetime()
+        c.execute("""
+            UPDATE `messages` SET `read_at` = ?
+            WHERE `entity_id` = ? AND `message_id` > ? AND `message_id` <= ? AND `to_id` = ?
+        """, [
+            now_time, str(entity_id), str(min_message_id), str(message_id), str(to_id)
+        ])
+        self.db_conn.commit()
 
     async def get_entity_name(self, entity_id, entity_type='', allow_str_id=True, with_additional_text=False):
         return await self.entity_controller.get_entity_name(entity_id, entity_type, allow_str_id, with_additional_text)
@@ -476,11 +520,19 @@ class InteractiveTelegramClient(TelegramClient):
 
                     if entity_id and (e_type == 'Channel') and self.entity_controller.channel_is_megagroup(entity_id):
                         e_type = 'Megagroup'
+                    if entity_id and (e_type == 'User') and self.tg_bot and (entity_id == self.tg_bot.bot_entity_id):
+                        e_type = 'Bot'
 
                     if message and entity_id:
                         if (
-                                (MainHelper().get_config_int_value('messages', 'write_messages_to_database') == 1) and
-                                (
+                                (MainHelper().get_config_int_value('messages', 'write_messages_to_database') == 1) and (
+                                    (not self.tg_bot) or
+                                    (entity_id != self.tg_bot.bot_entity_id) or (
+                                        (to_id == entity_id) and
+                                        (from_id != self.me_user_id)
+                                    ) or
+                                    (MainHelper().get_config_int_value('messages', 'event_include_my_bot') == 1)
+                                ) and (
                                     ((e_type == 'User') and (MainHelper().get_config_int_value('messages', 'event_include_users') == 1)) or
                                     ((e_type == 'Bot') and (MainHelper().get_config_int_value('messages', 'event_include_bots') == 1)) or
                                     ((e_type == 'Chat') and (MainHelper().get_config_int_value('messages', 'event_include_chats') == 1)) or
@@ -598,7 +650,10 @@ class InteractiveTelegramClient(TelegramClient):
                         if msg['message'] and (MainHelper().get_config_int_value('messages', 'display_remove_messages') == 1):
                             print('<<< ' + str(msg['message']).replace('\n', '\\n'))
 
+            elif type(update) == UpdateReadHistoryInbox:
+                await self.mark_message_as_read(update.peer, update.max_id, True)
             elif type(update) == UpdateReadHistoryOutbox:
+                await self.mark_message_as_read(update.peer, update.max_id, False)
                 data = update.to_dict()
                 message_info = await self.collect_message_info(data['max_id'], update.peer)
                 if message_info:
