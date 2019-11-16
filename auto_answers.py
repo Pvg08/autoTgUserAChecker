@@ -20,8 +20,6 @@ class AutoAnswers(BotActionBranch):
 
         self.setup_step = 0
         self.setup_user_id = None
-        self.active_entity_client = None
-        self.active_dialog_entity = None
         self.aa_for_users = {}
         self.aa_not_for_users = []
         self.aa_options = {
@@ -32,12 +30,11 @@ class AutoAnswers(BotActionBranch):
             'answer_after_minutes': 100000.0,
             'show_bot': True,
             'allow_bot_chat': False,
-            'notify_entity_client': None,
-            'notify_entity_dialog': None,
+            'notify_entity_id': None,
             'message': ''
         }
 
-        self.max_commands = 4
+        self.max_commands = 5
         self.commands.update({
             '/auto_start': {
                 'cmd': self.cmd_auto_start,
@@ -115,23 +112,19 @@ class AutoAnswers(BotActionBranch):
     def reset_user_setup(self):
         self.setup_step = 0
         self.setup_user_id = None
-        self.active_entity_client = None
-        self.active_dialog_entity = None
 
     async def start_user_setup(self, from_id):
         message_client = self.tg_bot_controller.get_user_message_client(from_id)
         dialog_entity = self.tg_bot_controller.get_user_dialog_entity(from_id)
         if not message_client or not dialog_entity:
             return False
-        if (self.setup_user_id is not None) and self.active_entity_client and self.active_dialog_entity:
+        if self.setup_user_id is not None:
             str_user_name_old = await self.tg_bot_controller.tg_client.get_entity_name(self.setup_user_id, 'User')
             str_user_name = await self.tg_bot_controller.tg_client.get_entity_name(from_id, 'User')
-            await self.active_entity_client.send_message(self.active_dialog_entity, 'Процесс настройки прерван ' + str_user_name)
+            await self.send_message_to_user(self.setup_user_id, 'Процесс настройки прерван {}'.format(str_user_name), do_set_next=False)
             if self.setup_user_id != from_id:
+                await self.send_message_to_user(from_id, 'Прервали настройку {}'.format(str_user_name_old), do_set_next=False)
                 await self.return_to_main_branch(self.setup_user_id)
-                await message_client.send_message(dialog_entity, 'Прервали настройку ' + str_user_name_old)
-        self.active_entity_client = message_client
-        self.active_dialog_entity = dialog_entity
         self.setup_user_id = from_id
         return True
 
@@ -140,7 +133,7 @@ class AutoAnswers(BotActionBranch):
             msg = 'Автоответчик для ' + self.tg_bot_controller.tg_client.me_user_name + ' настроен и запущен!\n\nПараметры:\n'
             msg = msg + '```'
             for k, v in self.aa_options.items():
-                if k not in ['is_set', 'notify_entity_client', 'notify_entity_dialog']:
+                if k not in ['is_set', 'notify_entity_id']:
                     msg = msg + k + ' = ' + str(v) + '\n'
             msg = msg + '```\n'
             msg = msg + 'Пользователи: '
@@ -165,7 +158,7 @@ class AutoAnswers(BotActionBranch):
     async def cmd_auto_start(self, from_id, params):
         if not await self.start_user_setup(from_id):
             return
-        await self.active_entity_client.send_message(self.active_dialog_entity, 'Настраиваем автоответчик для ' + self.tg_bot_controller.tg_client.me_user_name)
+        await self.send_message_to_user(from_id, 'Настраиваем автоответчик для {}'.format(self.tg_bot_controller.tg_client.me_user_name), do_set_next=False)
         self.reset_aa()
         await self.next_setup_step()
 
@@ -178,33 +171,65 @@ class AutoAnswers(BotActionBranch):
             self.setup_step = self.setup_step + 1
         if self.setup_step == 1:
             msg = '**Шаг 1**\n\n'
-            msg = msg + 'Для сообщений от кого должен срабатывать автоответчик?\n\n'
+            msg = msg + 'Для сообщений от кого должен срабатывать автоответчик? (уровень доступа)\n\n'
             msg = msg + '  0 - ото всех\n'
             msg = msg + '  1 - от моих контактов\n'
             msg = msg + '  2 - от моих взаимных контактов\n'
             msg = msg + '  3 - от выбранных в общем списке пользователей\n'
             msg = msg + '  4 - указать логины/ID\n'
-            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+            await self.send_message_to_user(from_user_id, msg.strip(), buttons=self.cmd_to_btns({
+                '0': '0',
+                '1': '1',
+                '2': '2',
+                '3': '3',
+                '4': 'указать логины',
+            }, 4), do_set_next=False)
         elif self.setup_step == 2:
             msg = '**Шаг 1.1**\n\n'
             msg = msg + 'Перечислите логины/ID через запятую'
-            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+            await self.send_message_to_user(from_user_id, msg.strip(), do_set_next=False)
         elif self.setup_step == 3:
             msg = '**Шаг 2**\n\n'
             msg = msg + 'Сколько минут ' + self.tg_bot_controller.tg_client.me_user_name + ' должен быть не в сети для срабатывания автоответчика?'
-            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+            await self.send_message_to_user(from_user_id, msg.strip(), buttons=self.cmd_to_btns({
+                '1': '1 мин',
+                '5': '5 мин',
+                '10': '10 мин',
+                '30': '30 мин',
+                '60': '1 ч',
+                '120': '2 ч',
+                '360': '3 ч',
+                '480': '4 ч',
+                '720': '6 ч',
+            }, 3), do_set_next=False)
         elif self.setup_step == 4:
             msg = '**Шаг 3**\n\n'
             msg = msg + 'Через сколько минут после сообщения автоответчик сработает?'
-            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+            await self.send_message_to_user(from_user_id, msg.strip(), buttons=self.cmd_to_btns({
+                '0': 'сразу же',
+                '0.5': '0.5 мин',
+                '1': '1 мин',
+                '2': '2 мин',
+                '5': '5 мин',
+                '10': '10 мин',
+                '20': '20 мин',
+                '30': '30 мин',
+                '60': '1 ч',
+            }, 3), do_set_next=False)
         elif self.setup_step == 5:
             msg = '**Шаг 4**\n\n'
             msg = msg + 'Показывать, что отвечает бот?'
-            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+            await self.send_message_to_user(from_user_id, msg.strip(), buttons=self.cmd_to_btns({
+                '0': 'нет',
+                '1': 'да',
+            }, 2), do_set_next=False)
         elif self.setup_step == 6:
             msg = '**Шаг 5**\n\n'
             msg = msg + 'После сообщения позволить боту продолжить диалог?'
-            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+            await self.send_message_to_user(from_user_id, msg.strip(), buttons=self.cmd_to_btns({
+                '0': 'нет',
+                '1': 'да',
+            }, 2), do_set_next=False)
         elif self.setup_step == 7:
             msg = '**Шаг 6**\n\n'
             msg = msg + 'Ну и наконец, введите текст сообщения.\n'
@@ -213,11 +238,12 @@ class AutoAnswers(BotActionBranch):
             msg = msg + 'Кроме того в тексте можно использовать следующие коды:\n'
             msg = msg + '[username] - подстановка имени пользователя для которого настраивается автоответчик.\n'
             msg = msg + '[statistics] - статистика активности и прогноз времени прибытия.\n'
-            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+            await self.send_message_to_user(from_user_id, msg.strip(), buttons=self.cmd_to_btns({
+                '0': 'стандартное сообщение',
+            }, 2), do_set_next=False)
         elif self.setup_step == 8:
             msg = '**Настройка завершена!!!**\n\n'
-            self.aa_options['notify_entity_client'] = self.active_entity_client
-            self.aa_options['notify_entity_dialog'] = self.active_dialog_entity
+            self.aa_options['notify_entity_id'] = from_user_id
             self.reset_aa()
             self.reset_user_setup()
             self.aa_options['is_set'] = True
@@ -227,12 +253,12 @@ class AutoAnswers(BotActionBranch):
             msg = msg + 'оно будет указано ботом в начальном сообщении вида:\n'
             msg = msg + '```'+MainHelper().get_config_value('chat_bot', 'bot_aa_default_message_time')+'```\n'
             msg = msg + 'Введите дату/время'
-            await self.active_entity_client.send_message(self.active_dialog_entity, msg.strip())
+            await self.send_message_to_user(from_user_id, msg.strip(), do_set_next=False)
 
     async def on_bot_message(self, message, from_id):
-        if self.setup_step == 0:
+        if (self.setup_step == 0) or (self.setup_user_id != from_id):
             return await super().on_bot_message(message, from_id)
-        if (not self.is_in_current_branch(from_id)) or (self.setup_user_id != from_id):
+        if not self.is_in_current_branch(from_id):
             return False
         message = str(message).strip()
         if self.setup_step == 1:
@@ -263,7 +289,7 @@ class AutoAnswers(BotActionBranch):
                     if entity.id not in self.aa_options['from_user_ids']:
                         self.aa_options['from_user_ids'].append(entity.id)
                 else:
-                    await self.active_entity_client.send_message(self.active_dialog_entity, 'Сущность не опознана - ' + str(login))
+                    await self.send_message_to_user(from_id, 'Сущность не опознана - ' + str(login), do_set_next=False)
             if len(self.aa_options['from_user_ids']) > 0:
                 await self.next_setup_step(3)
             else:
@@ -325,10 +351,10 @@ class AutoAnswers(BotActionBranch):
         msg_log = msg_log + '\n' + '<<< ' + message
         print(msg_log)
         await self.tg_bot_controller.tg_client.send_message(PeerUser(to_id), message)
-        if self.aa_options['notify_entity_client'] and self.aa_options['notify_entity_dialog']:
-            msg_log = StatusController.datetime_to_str(datetime.now()) + ' Отправляем сообщение пользователю ' + (await self.tg_bot_controller.user_link(to_id, to_username))
-            msg_log = msg_log + '\n' + '``` ' + message + '```'
-            await self.aa_options['notify_entity_client'].send_message(self.aa_options['notify_entity_dialog'], msg_log)
+        if self.aa_options['notify_entity_id']:
+            msg_log = StatusController.datetime_to_str(datetime.now()) + ' Отправляем сообщение пользователю {}'.format(await self.tg_bot_controller.user_link(to_id, to_username))
+            msg_log = msg_log + '\n\n' + '``` ' + message + '```'
+            await self.send_message_to_user(self.aa_options['notify_entity_id'], msg_log, do_set_next=False)
 
     async def on_user_message_to_me(self, from_id, message_text):
         if not self.aa_options['is_set']:
@@ -445,8 +471,7 @@ class AutoAnswers(BotActionBranch):
                 'answer_after_minutes': 2.0,
                 'show_bot': True,
                 'allow_bot_chat': True,
-                'notify_entity_client': None,
-                'notify_entity_dialog': None,
+                'notify_entity_id': None,
                 'message': ''
             }
         self.aa_options['from_mode'] = 4

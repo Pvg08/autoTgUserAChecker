@@ -221,6 +221,19 @@ class BotActionBranch:
             'params': params
         }
 
+    @staticmethod
+    def cmd_to_btns(cmd_dict, cols=1):
+        buttons = []
+        curr_row = []
+        for b_cmd, b_text in cmd_dict.items():
+            curr_row.append(KeyboardButtonCallback(str(b_text), str(b_cmd).encode()))
+            if len(curr_row) >= cols:
+                buttons.append(curr_row)
+                curr_row = []
+        if len(curr_row) > 0:
+            buttons.append(curr_row)
+        return buttons
+
     async def read_username_str(self, from_id, callback, message=None, params=None, allow_pick_myself=True):
         if not message:
             message = 'Выберите вариант из списка:'
@@ -274,13 +287,16 @@ class BotActionBranch:
             n_params.append(message)
         else:
             n_params = [n_params, message]
-        await self.read_once_callbacks[from_id]['callback'](from_id, n_params)
+        r_callback = self.read_once_callbacks[from_id]['callback']
         self.read_once_callbacks[from_id] = None
+        await r_callback(from_id, n_params)
 
     async def read_or_run_default(self, from_id, callback_cmd, callback_param, read_message, cmd_params=None):
         # async def callback_cmd(from_id, params)
         # def callback_param(user_id)
-        u_param = callback_param(from_id)
+        u_param = False
+        if callback_param:
+            u_param = callback_param(from_id)
         if u_param:
             n_params = cmd_params
             if n_params is None:

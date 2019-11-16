@@ -80,7 +80,7 @@ class EntityController():
             self_name = await self.get_entity_name(user_id, 'User')
             result_variants[user_id] = self_name + ' (Это Вы)'
         if allow_pick_me or (not user_is_me):
-            variants[self.tg_client.me_user_id] = str(self.tg_client.me_user_name)
+            variants[str(self.tg_client.me_user_id)] = str(self.tg_client.me_user_name)
         for variant_id in variants.keys():
             if variant_id not in result_variants:
                 try:
@@ -95,14 +95,14 @@ class EntityController():
 
     async def add_username_variant(self, user_id, variant_user_id):
         variants = self.get_entity_db_option(user_id, 'user_variants', True, {})
-        if variant_user_id in variants:
+        if str(variant_user_id) in variants:
             return
         try:
             n_name = await self.get_entity_name(int(variant_user_id), 'User')
         except:
             n_name = None
         if n_name:
-            variants[variant_user_id] = n_name
+            variants[str(variant_user_id)] = n_name
             self.set_entity_db_option(user_id, 'user_variants', variants, True)
 
     def get_user_bot_last_version(self, user_id):
