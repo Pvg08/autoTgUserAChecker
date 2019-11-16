@@ -154,16 +154,20 @@ class BotController(BotActionBranch):
         if str_user_id in self.users:
             self.users[str_user_id]['branch'] = branch
             self.users[str_user_id]['branch_path'] = branch.get_branch_path() if branch else '/'
+            self.entity_controller.set_entity_db_option(user_id, 'bot_branch_path', self.users[str_user_id]['branch_path'])
 
     def set_message_for_user(self, user_id, message_id, set_active=True, set_next=False):
         str_user_id = str(user_id)
         if str_user_id in self.users:
             if set_active:
                 self.users[str_user_id]['active_message_id'] = message_id
+                self.entity_controller.set_entity_db_option(user_id, 'bot_active_message_id', message_id)
             if set_next:
                 self.users[str_user_id]['last_next_message_id'] = message_id
+                self.entity_controller.set_entity_db_option(user_id, 'bot_last_next_message_id', message_id)
             if message_id:
                 self.users[str_user_id]['last_message_id'] = message_id
+                self.entity_controller.set_entity_db_option(user_id, 'bot_last_message_id', message_id)
 
     def stop_chat_with_user(self, user_id):
         str_user_id = str(user_id)
@@ -184,6 +188,32 @@ class BotController(BotActionBranch):
                 (self.users[str(self.tg_client.me_user_id)]['dialog_entity'].user_id == user_id)
             ):
                 self.stop_chat_with_user(self.tg_client.me_user_id)
+
+    async def get_branch_for_user_by_path(self, user_id: int, path_str: str):
+        path = path_str.strip('/')
+        path = path.split('/')
+        c_branch = self
+        for path_i in path:
+            c_branch = await c_branch.get_branch_for_user_by_code(user_id, path_i)
+            if not c_branch:
+                return None
+        return c_branch if c_branch != self else None
+
+    async def on_user_init(self, user_id: int):
+        str_user_id = str(user_id)
+        if str_user_id not in self.users:
+            return
+        tmp_path = self.entity_controller.get_entity_db_option(user_id, 'bot_branch_path', default='/')
+        tmp_branch = await self.get_branch_for_user_by_path(user_id, tmp_path)
+        if tmp_branch:
+            self.users[str_user_id]['branch'] = tmp_branch
+            self.users[str_user_id]['branch_path'] = tmp_branch.get_branch_path()
+        active_message_id = self.entity_controller.get_entity_db_option(user_id, 'bot_active_message_id', default=None)
+        last_next_message_id = self.entity_controller.get_entity_db_option(user_id, 'bot_last_next_message_id', default=None)
+        last_message_id = self.entity_controller.get_entity_db_option(user_id, 'bot_last_message_id', default=None)
+        self.users[str_user_id]['active_message_id'] = int(active_message_id) if active_message_id is not None else None
+        self.users[str_user_id]['last_next_message_id'] = int(last_next_message_id) if last_next_message_id is not None else None
+        self.users[str_user_id]['last_message_id'] = int(last_message_id) if last_message_id is not None else None
 
     async def init_chat_for_user(self, user_id, entity_id=None, in_bot=False, show_as_bot=None):
         str_user_id = str(user_id)
@@ -223,6 +253,7 @@ class BotController(BotActionBranch):
                 'entity_user_id': user_id,
                 'entity_user_name': await self.tg_client.get_entity_name(user_id, 'User')
             }
+            await self.on_user_init(user_id)
         else:
             self.users[str_user_id]['active'] = True
             if show_as_bot is not None:
@@ -359,6 +390,8 @@ class BotController(BotActionBranch):
     # ME -> BOT      me_id      bot_id            Bot
     async def bot_command(self, command_text, from_id, from_entity_id, from_entity_type, fwd_from=None):
 
+        has_user_before = (str(from_id) in self.users)
+
         fwd_message = None
 
         if fwd_from and (from_entity_type == 'Bot'):
@@ -386,6 +419,14 @@ class BotController(BotActionBranch):
             await self.init_chat_for_user(from_id, from_entity_id)
             if (from_entity_id != from_id) and not self.is_active_for_user(from_entity_id, False):
                 await self.init_chat_for_user(from_entity_id)
+
+        if not has_user_before:
+            has_user_after = (str(from_id) in self.users)
+            if has_user_after:
+                user_branch = self.get_user_branch(from_id)
+                if user_branch:
+                    if await user_branch.on_bot_message(command_text, from_id):
+                        return
 
         if fwd_message:
             self.set_branch_for_user(from_id, self.commands['/user_dialogue_info']['cmd'])

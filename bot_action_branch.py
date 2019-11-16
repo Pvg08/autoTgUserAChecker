@@ -205,6 +205,35 @@ class BotActionBranch:
             self_path = (pre_path + '/' + self_path).strip('/')
         return '/' + self_path
 
+    async def get_branch_for_user_by_code(self, user_id, branch_code):
+        if self.branch_code == branch_code:
+            return self if self != self.tg_bot_controller else None
+        for command in self.commands.values():
+            if ('cmd' in command) and command['cmd']:
+                command_obj = command['cmd']
+                if isinstance(command_obj, BotActionBranch):
+                    if command_obj.branch_code == branch_code:
+                        can_access = await self.user_can_access_command(user_id, command)
+                        if can_access:
+                            return command_obj
+                        else:
+                            return None
+        return None
+
+    async def user_can_access_command(self, user_id, command):
+        curr_place = self.tg_bot_controller.get_user_place_code(user_id)
+        curr_rights = await self.tg_bot_controller.get_user_rights_level_realtime(user_id)
+        if (
+            command and
+            (curr_place in command['places']) and
+            (curr_rights >= command['rights_level']) and
+            (('condition' not in command) or command['condition'](user_id)) and
+            ('cmd' in command) and
+            command['cmd']
+        ):
+            return True
+        return False
+
     def activate_branch_for_user(self, user_id):
         curr_branch = self.tg_bot_controller.get_user_branch(user_id)
         if (not curr_branch) or (curr_branch == self.branch_parent):
@@ -338,15 +367,8 @@ class BotActionBranch:
             command_code = command_parts[0].lower()
         if command_code and (command_parts[0] in self.commands):
             command = self.commands[command_code]
-            curr_place = self.tg_bot_controller.get_user_place_code(from_id)
-            curr_rights = await self.tg_bot_controller.get_user_rights_level_realtime(from_id)
-            if (
-                    (curr_place in command['places']) and
-                    (curr_rights >= command['rights_level']) and
-                    (('condition' not in command) or command['condition'](from_id)) and
-                    ('cmd' in command) and
-                    command['cmd']
-            ):
+            can_access = await self.user_can_access_command(from_id, command)
+            if can_access:
                 try:
                     command_obj = command['cmd']
                     if isinstance(command_obj, BotActionBranch):
@@ -393,11 +415,11 @@ class BotActionBranch:
         except MessageNotModifiedError:
             return
 
-    async def send_message_to_user(self, user_id, message, link_preview=False, buttons=None, set_active=False, do_set_next=True):
+    async def send_message_to_user(self, user_id, message_text: str, link_preview=False, buttons=None, set_active=False, do_set_next=True):
         if not self.tg_bot_controller.is_active_for_user(user_id):
-            return
-        if (len(message) + 8) >= 4096:
-            status_results = message.strip().splitlines()
+             return
+        if (len(message_text) + 8) >= 4096:
+            status_results = message_text.strip().splitlines()
             status_results.reverse()
             buff_len = 1
             while buff_len > 0:
@@ -414,16 +436,17 @@ class BotActionBranch:
                     else:
                         await self.send_one_message_to_user(user_id, "\n".join(buff), link_preview, buttons, set_active, do_set_next)
         else:
-            await self.send_one_message_to_user(user_id, message, link_preview, buttons, set_active, do_set_next)
+            await self.send_one_message_to_user(user_id, message_text, link_preview, buttons, set_active, do_set_next)
 
-    async def send_one_message_to_user(self, user_id, message, link_preview=False, buttons=None, set_active=False, do_set_next=True):
+    async def send_one_message_to_user(self, user_id, message_text: str, link_preview=False, buttons=None, set_active=False, do_set_next=True):
         if not self.tg_bot_controller.is_active_for_user(user_id):
             return
+        message = None
         try:
             str_user_id = str(user_id)
             message_client = self.tg_bot_controller.users[str_user_id]['message_client']
             dialog_entity = self.tg_bot_controller.users[str_user_id]['dialog_entity']
-            message = self.tg_bot_controller.text_to_bot_text(message, user_id)
+            message_to_send = self.tg_bot_controller.text_to_bot_text(message_text, user_id)
             last_active = None
             last_next = self.tg_bot_controller.get_user_next_message_id(user_id)
             set_next = False
@@ -442,15 +465,23 @@ class BotActionBranch:
                     set_next = True
                 elif buttons and (not set_active):
                     set_next = True
-                message = await message_client.send_message(dialog_entity, message, link_preview=link_preview, buttons=buttons)
+                message = await message_client.send_message(dialog_entity, message_to_send, link_preview=link_preview, buttons=buttons)
                 if message and (type(message) == Message):
                     self.tg_bot_controller.set_message_for_user(user_id, message.id, set_active, set_next)
             else:
+                is_except = False
                 try:
-                    message = await message_client.edit_message(dialog_entity, last_active, message, link_preview=link_preview, buttons=buttons)
-                except MessageNotModifiedError:
+                    message = await message_client.edit_message(dialog_entity, last_active, message_to_send, link_preview=link_preview, buttons=buttons)
+                except:
+                    is_except = True
+                    message = None
+                if is_except:
+                    message = await message_client.get_messages(dialog_entity, ids=last_active)
+                if message and (type(message) == Message):
                     return True
-                    pass
+                else:
+                    self.tg_bot_controller.set_message_for_user(user_id, None, True)
+                    return await self.send_one_message_to_user(user_id, message_text, link_preview, buttons, set_active, do_set_next)
         except:
             traceback.print_exc()
         return True if message else False
